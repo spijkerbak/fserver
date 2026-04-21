@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Lock files
+package-lock.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Runtime data
+pids/
+*.pid
+*.pid.lock
+
+# Caches and temp files
+.cache/
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor settings
+.vscode/
+
+# Local TLS certificates and keys
+ssl/*.key
+ssl/*.crt
+ssl/*.pem
+
+# Local config files
+config.json
+
+# Resized images
+.resized/
+
