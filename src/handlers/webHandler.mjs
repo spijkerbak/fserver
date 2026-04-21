@@ -155,7 +155,7 @@ async function handleImage(request, reply, resolvedPath) {
             }
         })
 
-        return reply.type(getContentType(resizedImagePath)).send(stream)
+        return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
     } catch (err) {
         request.log.error(err)
         return reply.code(500).send({ error: 'Image processing error' })
