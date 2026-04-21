@@ -28,7 +28,9 @@ function isVideo(file) {
 
 const getContentType = (filePath) => {
     const extension = path.extname(filePath).toLowerCase()
-    return mime.lookup(extension) || 'application/octet-stream'
+    const type = mime.lookup(extension) || 'application/octet-stream'
+    console.debug(`Determined content type for ${filePath}: ${type}`)
+    return type
 }
 
 const getSafeWebrootPath = (webroot, requestPath) => {
@@ -131,12 +133,13 @@ async function handleImage(request, reply, resolvedPath) {
     const dir = path.dirname(resolvedPath.absolutePath)
     const filename = path.basename(resolvedPath.absolutePath)
     const resizedDir = path.join(dir, '.resized')
+    
     // Ensure the resized directory exists
     await fs.promises.mkdir(resizedDir, { recursive: true })
     const resizedImagePath = path.join(resizedDir, `${filename}.${closestSize}`)
 
     try {
-        
+
         // Check if resized image already exists
         try {
             await fs.promises.stat(resizedImagePath)
@@ -155,7 +158,9 @@ async function handleImage(request, reply, resolvedPath) {
             }
         })
 
-        return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
+        const contentType = getContentType(resolvedPath.absolutePath)
+        reply.header('Content-Type', contentType)
+        return reply.send(stream)
     } catch (err) {
         request.log.error(err)
         return reply.code(500).send({ error: 'Image processing error' })
@@ -163,6 +168,8 @@ async function handleImage(request, reply, resolvedPath) {
 }
 
 const run = (webroot) => async (request, reply) => {
+
+    request.log.warn(`Received request: ${request.method} ${request.url} (webroot: ${webroot})` + `, headers: ${JSON.stringify(request.headers)}`)
 
     const wildcardPath = request.params['*'] ?? ''
     const requestUrl = new URL(request.url, `http://${request.headers.host}`)
@@ -209,7 +216,9 @@ const run = (webroot) => async (request, reply) => {
 
         return handleFile(request, reply, resolvedPath)
     } catch (err) {
-        request.log.error(err)
+        if (err.code === 'ENOENT') {
+            return reply.code(404).send({ error: 'File not found' })
+        }
         return reply.code(500).send({ error: 'Internal Server Error (1)' })
     }
 }

@@ -8,9 +8,12 @@ const default_config = {
     origin: ['http://localhost'],
     host: '0.0.0.0',
     port: 3000,
-    webroot: 'public/web',
-    apiroot: 'public/api',
-    mediaroot: '/mnt/media/',
+    web_roots: {
+        "/": "public/web"
+    },
+    api_roots: {
+        "/api": "public/api"
+    },
     ssl_key: 'ssl/key.pem',
     ssl_cert: 'ssl/cert.pem',
 }
@@ -27,14 +30,12 @@ export function loadConfig() {
                 config[key] = default_config[key]
             }
         }
+        console.log('Config: ', JSON.stringify(config, null, 2))
     } catch (err) {
         console.warn('Warning: config.json cannot be read, using defaults')
         // config = { ...default_config }
         config = default_config
     }
-
-    config.webroot = path.resolve(config.webroot)
-    config.apiroot = path.resolve(config.apiroot)
 
     return config
 }
