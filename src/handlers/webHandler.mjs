@@ -29,7 +29,6 @@ function isVideo(file) {
 const getContentType = (filePath) => {
     const extension = path.extname(filePath).toLowerCase()
     const type = mime.lookup(extension) || 'application/octet-stream'
-    console.debug(`Determined content type for ${filePath}: ${type}`)
     return type
 }
 
@@ -168,8 +167,6 @@ async function handleImage(request, reply, resolvedPath) {
 }
 
 const run = (webroot) => async (request, reply) => {
-
-    request.log.warn(`Received request: ${request.method} ${request.url} (webroot: ${webroot})` + `, headers: ${JSON.stringify(request.headers)}`)
 
     const wildcardPath = request.params['*'] ?? ''
     const requestUrl = new URL(request.url, `http://${request.headers.host}`)
