@@ -10,21 +10,11 @@
 ## setup
 
 ```bash
-npm init -y
-npm install fastify cors pino-pretty mime-types sharp
-npm audit fix --force
-npm pkg set type="module"
-npm pkg set scripts.start="node --watch app.js"
+npm install
 ```
 
 ## run
 
 ```bash
 npm start
-```
-
-## clone command
-
-``` bash
-git clone https://github.com/spijkerbak/fserver.git
 ```
