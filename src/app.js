@@ -45,10 +45,18 @@ const createServer = async (config) => {
         "style-src 'self' 'unsafe-inline'",
     ]
     server.addHook('onSend', async (req, reply, payload) => {
-        reply.header('X-Content-Type-Options', 'nosniff')
+        // nosniff lets browser know not to sniff content types,
+        // which can prevent some XSS attacks.
+        // However, it can cause issues with certain file types 
+        // if the server doesn't set the correct Content-Type header.
+        // If you want to enable it, make sure your server is correctly setting Content-Type for all responses.
+        // Specially with 404 responses, which might be served as text/html by default, causing browsers to try to render them as HTML.
+
+        // reply.header('X-Content-Type-Options', 'nosniff')
+
         reply.header('X-Frame-Options', 'DENY')
         reply.header('Referrer-Policy', 'no-referrer')
-        reply.header('Content-Security-Policy', policies.join('; '))
+        // reply.header('Content-Security-Policy', policies.join('; '))
         return payload
     })
 
