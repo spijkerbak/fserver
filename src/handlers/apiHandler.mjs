@@ -4,35 +4,15 @@ import { pathToFileURL } from 'url'
 
 const getSafeApiModulePath = (request, apiroot, item) => {
     const normalizedItem = path.posix.normalize(`/${item || ''}`).replace(/^\/+/, '')
-    request.log.error(`Normalized API path: ${normalizedItem}`)
     const modulePath = path.resolve(apiroot, normalizedItem, 'run.mjs')
-    request.log.error(`Resolved API module path: ${modulePath}`)
     const relativeToApiroot = path.relative(apiroot, modulePath)
     if (relativeToApiroot.startsWith('..') || path.isAbsolute(relativeToApiroot)) {
         return null
     }
-    request.log.error(`Resolved API module path: ${modulePath}`)
     return modulePath
 }
 
-const runModule = async (modulePath, request, reply) => {
-    try {
-        const module = await import(pathToFileURL(modulePath).href)
-        if (typeof module.run === 'function') {
-            return await module.run(request, reply)
-        } else {
-            throw new Error('Module does not export a run function')
-        }
-    } catch (error) {
-        throw new Error(`Failed to execute API module: ${error.message}`)
-    }
-}
-
 const run = (apiroot) => async (request, reply) => {
-    request.log.error(`API root: ${apiroot}`)
-    request.log.error(`Handling API request: ${request.url} with method: ${request.method}`)
-
-
     const split = request.url.split('?')
     const queryParams = new URLSearchParams(split[1] || '')
     const url = split[0]
@@ -44,7 +24,7 @@ const run = (apiroot) => async (request, reply) => {
         if (!modulePath || !fs.existsSync(modulePath)) {
             modulePath = getSafeApiModulePath(request, apiroot, parts.slice(0, -2).join('/'))
             if (!modulePath || !fs.existsSync(modulePath)) {
-                modulePath = getSafeApiModulePath(request,apiroot, parts.slice(0, -3).join('/'))
+                modulePath = getSafeApiModulePath(request, apiroot, parts.slice(0, -3).join('/'))
             }
         }
     }
@@ -56,9 +36,12 @@ const run = (apiroot) => async (request, reply) => {
     }
 
     try {
-        return await runModule(modulePath, request, reply)
+        const module = await import(pathToFileURL(modulePath).href)
+        if (typeof module.run === 'function') {
+            return await module.run(request, reply)
+        }
     } catch (error) {
-        request.log.error({ path: modulePath, error }, 'Failed to execute API module')
+        request.log.error({ path: modulePath, error }, 'Failed to execute API module (2)')
         return reply.status(500).send({ message: 'Internal server error' })
     }
 
