@@ -1,3 +1,4 @@
+import { error } from 'console'
 import fs from 'fs'
 import path from 'path'
 import { pathToFileURL } from 'url'
@@ -11,6 +12,12 @@ const getSafeApiModulePath = (request, apiroot, item) => {
     }
     return modulePath
 }
+
+const apiError = (request, reply, status, message) => {
+    request.log.warn({ url: request.url, method: request.method, error: error.message }, message)
+    return reply.status(status).send({ status: status, message: message })
+}
+
 
 const run = (apiroot) => async (request, reply) => {
     const split = request.url.split('?')
@@ -29,10 +36,7 @@ const run = (apiroot) => async (request, reply) => {
         }
     }
     if (!modulePath || !fs.existsSync(modulePath)) {
-        // const errorMessage = `API module not found for path: ${request.url} => ${modulePath || 'N/A'}`
-        const errorMessage = `API module not found for path: ${parts} => ${modulePath || 'N/A'}`
-        request.log.warn({ url: request.url, method: request.method }, errorMessage)
-        return reply.status(400).send({ message: errorMessage })
+        return apiError(request, reply, 404, `Unknown API endpoint: ${request.url}`)
     }
 
     try {
@@ -41,8 +45,7 @@ const run = (apiroot) => async (request, reply) => {
             return await module.run(request, reply)
         }
     } catch (error) {
-        request.log.error({ path: modulePath, error }, 'Failed to execute API module (2)')
-        return reply.status(500).send({ message: 'Internal server error' })
+        return apiError(request, reply, 500, `Failed to execute API module: ${request.url}`)
     }
 
 }
