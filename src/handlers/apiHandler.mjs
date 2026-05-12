@@ -39,13 +39,16 @@ const run = (apiroot) => async (request, reply) => {
         return apiError(request, reply, 404, `Unknown API endpoint: ${request.url}`)
     }
 
+    let path
     try {
-        const module = await import(pathToFileURL(modulePath).href)
+        path = pathToFileURL(modulePath).href
+        const module = await import(path)
         if (typeof module.run === 'function') {
             return await module.run(request, reply)
         }
     } catch (error) {
-        return apiError(request, reply, 500, `Failed to execute API module: ${request.url}`)
+
+        return apiError(request, reply, 500, `Failed to execute API module: ${request.url}\n${path}\n${error.message}`)
     }
 
 }

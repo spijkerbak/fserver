@@ -1,0 +1,20 @@
+{
+    "origin": [
+        "http://localhost",
+        "https://mysite.local"
+    ],
+    "host": "0.0.0.0",
+    "port": 443,
+    "web_roots":
+        {
+            "/video":  "/home/developer/Videos/Action",
+            "/script": "/home/developer/Documents/webroot/mysite/script",
+            "/":       "/home/developer/Documents/webroot/mysite/web"
+            
+        },
+    "api_roots": {
+          "/api":        "/home/developer/Documents/webroot/mysite/api"
+    },
+    "ssl_key": "/home/developer/.ssl/key.pem",
+    "ssl_cert": "/home/developer/.ssl/cert.pem"
+}
