@@ -44,7 +44,7 @@ const run = (apiroot) => async (request, reply) => {
         path = pathToFileURL(modulePath).href
         const module = await import(path)
         if (typeof module.run === 'function') {
-            return await module.run(request, reply)
+            return await module.run(request, reply, parts)
         }
     } catch (error) {
 
@@ -55,3 +55,4 @@ const run = (apiroot) => async (request, reply) => {
 const apiHandler = { run }
 
 export { apiHandler }
+
