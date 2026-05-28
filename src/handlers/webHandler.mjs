@@ -72,7 +72,7 @@ const handleIncludes = async (htmlPath, webroot) => {
         includes.push(match[1])
     }
 
-    console.log(`Found ${includes.length} include(s) in ${htmlPath}:`, includes)
+    // console.log(`Found ${includes.length} include(s) in ${htmlPath}:`, includes)
 
     for (let includePath of includes) {
         try {
@@ -90,7 +90,7 @@ const handleIncludes = async (htmlPath, webroot) => {
                 continue
             }
 
-            console.log(`Processing include: ${includePath} in ${htmlPath} (resolved to ${resolved.relativePath})`)
+            // console.log(`Processing include: ${includePath} in ${htmlPath} (resolved to ${resolved.relativePath})`)
             const stats = await fs.promises.stat(resolved.absolutePath)
             if (!stats.isFile()) {
                 console.warn(`Skipping include that is not a file: ${includePath} in ${htmlPath}`)
@@ -99,8 +99,10 @@ const handleIncludes = async (htmlPath, webroot) => {
 
 
             const includedContent = await fs.promises.readFile(resolved.absolutePath, 'utf-8')
-            console.log(`Including content from ${resolved.relativePath} into ${htmlPath}`)
-            content = content.replace(new RegExp(`<!--\\s*#include\\s*virtual\\s*=\\s*["']${includePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']\\s*-->`, 'g'), includedContent)
+            // console.log(`Including content from ${resolved.relativePath} into ${htmlPath}`)
+
+            const escapedPath = includePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            content = content.replace(new RegExp(`<!--\\s*#include\\s*virtual\\s*=\\s*["']${escapedPath}["']\\s*-->`, 'g'), includedContent)
         } catch (err) {
             // Skip includes that cannot be read
             console.warn(`Skipping include due to error: ${includePath} in ${htmlPath}`, err)
