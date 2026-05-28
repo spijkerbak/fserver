@@ -35,11 +35,12 @@ openssl req -x509 -out localhost.crt -keyout localhost.key \
    printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
 ```
 
-## configure
+## Configure
 
-Copy `config-example.json` to `config.json`
+Copy `config-example.json` to `config.json`. This serves the public folder as an example.
+Adjust configuration to your own needs.
 
-## run
+## Run
 
 ```bash
 # might need sudo to use port 443
