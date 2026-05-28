@@ -5,16 +5,13 @@
     ],
     "host": "0.0.0.0",
     "port": 443,
-    "web_roots":
-        {
-            "/video":  "/home/developer/Videos/Action",
-            "/script": "/home/developer/Documents/webroot/mysite/script",
-            "/":       "/home/developer/Documents/webroot/mysite/web"
-            
-        },
-    "api_roots": {
-          "/api":        "/home/developer/Documents/webroot/mysite/api"
+    "web_roots": {
+        "/": "./public/web",
+        "/video": "./public/video"
     },
-    "ssl_key": "/home/developer/.ssl/key.pem",
-    "ssl_cert": "/home/developer/.ssl/cert.pem"
+    "api_roots": {
+        "/api": "./public/api"
+    },
+    "ssl_key": "./localhost.key",
+    "ssl_cert": "./localhost.crt"
 }

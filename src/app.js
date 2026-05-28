@@ -10,6 +10,8 @@ import { apiHandler } from './handlers/apiHandler.mjs'
 const createServer = async (config) => {
     // Try to load SSL certificate and key
     let httpsOptions = undefined
+    // const keyPath = path.resolve(config.ssl_key)
+    // const certPath = path.resolve(config.ssl_cert)
     const keyPath = path.resolve(config.ssl_key)
     const certPath = path.resolve(config.ssl_cert)
     if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
@@ -32,10 +34,14 @@ const createServer = async (config) => {
                     translateTime: 'HH:MM:ss Z',
                 },
             },
-            level: 'warn',
+            level: 'debug',
         },
         ...httpsOptions,
     })
+
+    if (!httpsOptions) {
+        server.log.error(`Could not read certificate or public key: ${certPath}`)
+    }
 
     // Security headers
     const policies = [
@@ -70,13 +76,13 @@ const createServer = async (config) => {
 
     // Web routes
     for (const [routePrefix, webRoot] of Object.entries(config.web_roots)) {
-        const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/' 
+        const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/'
         server.get(`${prefix}*`, webHandler.run(webRoot))
     }
 
     // API routes
     for (const [routePrefix, apiRoot] of Object.entries(config.api_roots)) {
-        const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/' 
+        const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/'
         server.get(`${prefix}*`, apiHandler.run(apiRoot))
     }
     // Start listening for requests

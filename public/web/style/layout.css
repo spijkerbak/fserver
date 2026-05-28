@@ -24,8 +24,13 @@ p {
 }
 
 a {
+    display: inline-block;
     color: #007BFF;
     text-decoration: none;
+    border: 1px solid #007BFF;
+    padding: 4px;
+    border-radius: 3px;
+    margin: 2px;
 }
 
 a:hover {
