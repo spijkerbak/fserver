@@ -10,6 +10,8 @@ import { apiHandler } from './handlers/apiHandler.mjs'
 const createServer = async (config) => {
     // Try to load SSL certificate and key
     let httpsOptions = undefined
+    // const keyPath = path.resolve(config.ssl_key)
+    // const certPath = path.resolve(config.ssl_cert)
     const keyPath = path.resolve(config.ssl_key)
     const certPath = path.resolve(config.ssl_cert)
     if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
@@ -37,6 +39,10 @@ const createServer = async (config) => {
         ...httpsOptions,
     })
 
+    if (!httpsOptions) {
+        server.log.error(`Could not read certificate or public key: ${certPath}`)
+    }
+
     // Security headers
     const policies = [
         "default-src 'self'",
@@ -45,10 +51,18 @@ const createServer = async (config) => {
         "style-src 'self' 'unsafe-inline'",
     ]
     server.addHook('onSend', async (req, reply, payload) => {
-        reply.header('X-Content-Type-Options', 'nosniff')
+        // nosniff lets browser know not to sniff content types,
+        // which can prevent some XSS attacks.
+        // However, it can cause issues with certain file types 
+        // if the server doesn't set the correct Content-Type header.
+        // If you want to enable it, make sure your server is correctly setting Content-Type for all responses.
+        // Specially with 404 responses, which might be served as text/html by default, causing browsers to try to render them as HTML.
+
+        // reply.header('X-Content-Type-Options', 'nosniff')
+
         reply.header('X-Frame-Options', 'DENY')
         reply.header('Referrer-Policy', 'no-referrer')
-        reply.header('Content-Security-Policy', policies.join('; '))
+        // reply.header('Content-Security-Policy', policies.join('; '))
         return payload
     })
 
@@ -60,15 +74,17 @@ const createServer = async (config) => {
     server.register(cors, { origin: config.origin })
     server.register(import('@fastify/compress'))
 
-    // API route
-    server.get('/api/*', apiHandler.run(config.apiroot))
+    // Web routes
+    for (const [routePrefix, webRoot] of Object.entries(config.web_roots)) {
+        const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/'
+        server.get(`${prefix}*`, webHandler.run(webRoot))
+    }
 
-    // Web route
-    server.get('/media/*', webHandler.run(config.mediaroot))
-
-    // Web route
-    server.get('/*', webHandler.run(config.webroot))
-
+    // API routes
+    for (const [routePrefix, apiRoot] of Object.entries(config.api_roots)) {
+        const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/'
+        server.get(`${prefix}*`, apiHandler.run(apiRoot))
+    }
     // Start listening for requests
     await server.listen({ host: config.host, port: config.port })
     return server

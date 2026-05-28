@@ -3,13 +3,14 @@ import path from 'path'
 import mime from 'mime-types'
 import sharp from 'sharp'
 
-// ---- Allowed file types (security!) ----
+// ---- White list of allowed file types (security!) ----
 const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.svg']
-const VIDEO_EXT = ['.mp4', '.webm', '.ogg', '.mkv']
+const VIDEO_EXT = ['.mp4', '.webm', '.ogg', '.mkv', '.avi', '.mov', '.m4v']
 const AUDIO_EXT = ['.mp3', '.wav', '.ogg']
 const DOC_EXT = ['.pdf', '.docx', '.xlsx', '.pptx']
 const WEB_EXT = ['.html', '.css', '.js']
-const ALLOWED_EXT = [...WEB_EXT, ...DOC_EXT, ...IMAGE_EXT, ...VIDEO_EXT, ...AUDIO_EXT]
+const SSI_EXT = ['.html', '.part', '.inc', '.txt', '.phtml'] // for server side includes
+const ALLOWED_EXT = [...WEB_EXT, ...DOC_EXT, ...IMAGE_EXT, ...VIDEO_EXT, ...AUDIO_EXT, ...SSI_EXT]
 
 function isAllowed(file) {
     return ALLOWED_EXT.includes(path.extname(file).toLowerCase())
@@ -18,6 +19,7 @@ function isAllowed(file) {
 function isImage(file) {
     return IMAGE_EXT.includes(path.extname(file).toLowerCase())
 }
+
 function isAudio(file) {
     return AUDIO_EXT.includes(path.extname(file).toLowerCase())
 }
@@ -26,9 +28,14 @@ function isVideo(file) {
     return VIDEO_EXT.includes(path.extname(file).toLowerCase())
 }
 
+function isHtml(file) {
+    return path.extname(file).toLowerCase() === '.html'
+}
+
 const getContentType = (filePath) => {
     const extension = path.extname(filePath).toLowerCase()
-    return mime.lookup(extension) || 'application/octet-stream'
+    const type = mime.lookup(extension) || 'application/octet-stream'
+    return type
 }
 
 const getSafeWebrootPath = (webroot, requestPath) => {
@@ -54,7 +61,59 @@ const buildRedirectTarget = (pathname, search = '') => {
     return `${pathname}${search}`
 }
 
-async function handleDirectory(request, reply, resolvedPath, requestUrl) {
+/* improve this by handling line by line and allowing nested includes (?),
+ but for now this is a simple implementation that replaces all includes in one go */
+const handleIncludes = async (htmlPath, webroot) => {
+    let content = await fs.promises.readFile(htmlPath, 'utf-8')
+    const includeRegex = /<!--\s*#include\s+virtual\s*=\s*["']([^"']+)["']\s*-->/g
+
+    let match
+    const includes = []
+    while ((match = includeRegex.exec(content)) !== null) {
+        includes.push(match[1])
+    }
+
+    // console.log(`Found ${includes.length} include(s) in ${htmlPath}:`, includes)
+
+    for (let includePath of includes) {
+        try {
+            let resolved
+            if (!includePath.startsWith('/')) {
+                const folder = path.dirname(htmlPath)
+                const localPath = path.posix.join('/', path.relative(webroot, folder), includePath)
+                resolved = getSafeWebrootPath(webroot, localPath)
+            } else {
+                resolved = getSafeWebrootPath(webroot, includePath)
+            }
+
+            if (!resolved) {
+                console.warn(`Skipping include with invalid path: ${includePath} in ${htmlPath}`)
+                continue
+            }
+
+            // console.log(`Processing include: ${includePath} in ${htmlPath} (resolved to ${resolved.relativePath})`)
+            const stats = await fs.promises.stat(resolved.absolutePath)
+            if (!stats.isFile()) {
+                console.warn(`Skipping include that is not a file: ${includePath} in ${htmlPath}`)
+                continue
+            }
+
+            const includedContent = await fs.promises.readFile(resolved.absolutePath, 'utf-8')
+            // console.log(`Including content from ${resolved.relativePath} into ${htmlPath}`)
+
+            const escapedPath = includePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            content = content.replace(new RegExp(`<!--\\s*#include\\s*virtual\\s*=\\s*["']${escapedPath}["']\\s*-->`, 'g'), includedContent)
+        } catch (err) {
+            // Skip includes that cannot be read
+            console.warn(`Skipping include due to error: ${includePath} in ${htmlPath}`, err)
+            continue
+        }
+    }
+
+    return content
+}
+
+async function handleDirectory(request, reply, resolvedPath, requestUrl, webroot) {
     if (!requestUrl.pathname.endsWith('/')) {
         return reply.redirect(buildRedirectTarget(`${requestUrl.pathname}/`, requestUrl.search))
     }
@@ -66,15 +125,13 @@ async function handleDirectory(request, reply, resolvedPath, requestUrl) {
         return reply.code(404).send({ error: 'File not found' })
     }
 
-    const stream = createReadStream(indexPath)
-
-    stream.on('error', err => {
+    try {
+        const content = await handleIncludes(indexPath, webroot)
+        return reply.type('text/html').send(content)
+    } catch (err) {
         request.log.error(err)
-        if (!reply.sent) {
-            reply.code(500).send({ error: 'Stream error' })
-        }
-    })
-    return reply.type('text/html').send(stream)
+        return reply.code(500).send({ error: 'Stream error' })
+    }
 }
 
 function handleRange(request, reply, resolvedPath, stats) {
@@ -108,15 +165,26 @@ function handleRange(request, reply, resolvedPath, stats) {
     return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
 }
 
-function handleFile(request, reply, resolvedPath) {
-    const stream = createReadStream(resolvedPath.absolutePath)
-    stream.on('error', err => {
-        request.log.error(err)
-        if (!reply.sent) {
-            reply.code(500).send({ error: 'Stream error' })
+async function handleFile(request, reply, resolvedPath, webroot) {
+    try {
+        if (isHtml(resolvedPath.absolutePath)) {
+            const content = await handleIncludes(resolvedPath.absolutePath, webroot)
+            return reply.type('text/html').send(content)
         }
-    })
-    return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
+
+        const stream = createReadStream(resolvedPath.absolutePath)
+        stream.on('error', err => {
+            request.log.error(err)
+            if (!reply.sent) {
+                reply.code(500).send({ error: 'Stream error' })
+            }
+        })
+
+        return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
+    } catch (err) {
+        request.log.error(err)
+        return reply.code(500).send({ error: 'Stream error' })
+    }
 }
 
 async function handleImage(request, reply, resolvedPath) {
@@ -131,12 +199,13 @@ async function handleImage(request, reply, resolvedPath) {
     const dir = path.dirname(resolvedPath.absolutePath)
     const filename = path.basename(resolvedPath.absolutePath)
     const resizedDir = path.join(dir, '.resized')
+
     // Ensure the resized directory exists
     await fs.promises.mkdir(resizedDir, { recursive: true })
     const resizedImagePath = path.join(resizedDir, `${filename}.${closestSize}`)
 
     try {
-        
+
         // Check if resized image already exists
         try {
             await fs.promises.stat(resizedImagePath)
@@ -155,7 +224,9 @@ async function handleImage(request, reply, resolvedPath) {
             }
         })
 
-        return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
+        const contentType = getContentType(resolvedPath.absolutePath)
+        reply.header('Content-Type', contentType)
+        return reply.send(stream)
     } catch (err) {
         request.log.error(err)
         return reply.code(500).send({ error: 'Image processing error' })
@@ -192,7 +263,7 @@ const run = (webroot) => async (request, reply) => {
     try {
         const stats = await fs.promises.stat(resolvedPath.absolutePath)
         if (stats.isDirectory()) {
-            return handleDirectory(request, reply, resolvedPath, requestUrl)
+            return await handleDirectory(request, reply, resolvedPath, requestUrl, webroot)
         }
         if (!stats.isFile()) {
             return reply.code(404).send({ error: 'File not found' })
@@ -207,9 +278,11 @@ const run = (webroot) => async (request, reply) => {
             return await handleImage(request, reply, resolvedPath)
         }
 
-        return handleFile(request, reply, resolvedPath)
+        return await handleFile(request, reply, resolvedPath, webroot)
     } catch (err) {
-        request.log.error(err)
+        if (err.code === 'ENOENT') {
+            return reply.code(404).send({ error: 'File not found' })
+        }
         return reply.code(500).send({ error: 'Internal Server Error (1)' })
     }
 }
