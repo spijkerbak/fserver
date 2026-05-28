@@ -13,5 +13,5 @@
         "/api": "./public/api"
     },
     "ssl_key": "./ssl-localhost/localhost.key",
-    "ssl_cert": "./ssl-localhost/localhost.crt",
+    "ssl_cert": "./ssl-localhost/localhost.crt"
 }

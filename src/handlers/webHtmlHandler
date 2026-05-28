@@ -1,0 +1,61 @@
+import fs, { createReadStream } from 'fs'
+import path from 'path'
+
+import { pathFinder } from './pathFinder.mjs'
+
+const handleHtml = async (htmlPath, webroot) => {
+    let content = await fs.promises.readFile(htmlPath, 'utf-8')
+    const includeRegex = /<!--\s*#include\s+virtual\s*=\s*["']([^"']+)["']\s*-->/g
+
+    let match
+    const includes = []
+    while ((match = includeRegex.exec(content)) !== null) {
+        includes.push(match[1])
+    }
+
+    console.log(`Found ${includes.length} include(s) in ${htmlPath}:`, includes)
+
+    for (let includePath of includes) {
+        try {
+            let resolved
+            if (!includePath.startsWith('/')) {
+                const folder = path.dirname(htmlPath)
+                const localPath = path.posix.join('/', path.relative(webroot, folder), includePath)
+                resolved = pathFinder.getSafeWebrootPath(webroot, localPath)
+            } else {
+                resolved = pathFinder.getSafeWebrootPath(webroot, includePath)
+            }
+
+            if (!resolved) {
+                console.warn(`Skipping include with invalid path: ${includePath} in ${htmlPath}`)
+                continue
+            }
+
+            console.log(`Processing include: ${includePath} in ${htmlPath} (resolved to ${resolved.relativePath})`)
+            const stats = await fs.promises.stat(resolved.absolutePath)
+            if (!stats.isFile()) {
+                console.warn(`Skipping include that is not a file: ${includePath} in ${htmlPath}`)
+                continue
+            }
+
+            const includedContent = await fs.promises.readFile(resolved.absolutePath, 'utf-8')
+            console.log(`Including content from ${resolved.relativePath} into ${htmlPath}`)
+
+            const escapedPath = includePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            content = content.replace(new RegExp(`<!--\\s*#include\\s*virtual\\s*=\\s*["']${escapedPath}["']\\s*-->`, 'g'), includedContent)
+        } catch (err) {
+            // Skip includes that cannot be read
+            console.warn(`Skipping include due to error: ${includePath} in ${htmlPath}`, err)
+            continue
+        }
+    }
+
+    return content
+}
+
+const webHtmlHandler = {
+    handleHtml: handleHtml
+}
+
+export { webHtmlHandler }
+
