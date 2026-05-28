@@ -5,7 +5,7 @@ import sharp from 'sharp'
 
 // ---- White list of allowed file types (security!) ----
 const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.svg']
-const VIDEO_EXT = ['.mp4', '.webm', '.ogg', '.mkv']
+const VIDEO_EXT = ['.mp4', '.webm', '.ogg', '.mkv', '.avi', '.mov', '.m4v']
 const AUDIO_EXT = ['.mp3', '.wav', '.ogg']
 const DOC_EXT = ['.pdf', '.docx', '.xlsx', '.pptx']
 const WEB_EXT = ['.html', '.css', '.js']
@@ -65,33 +65,49 @@ const buildRedirectTarget = (pathname, search = '') => {
 const handleIncludes = async (htmlPath, webroot) => {
     let content = await fs.promises.readFile(htmlPath, 'utf-8')
     const includeRegex = /<!--\s*#include\s+virtual\s*=\s*["']([^"']+)["']\s*-->/g
-    
+
     let match
     const includes = []
     while ((match = includeRegex.exec(content)) !== null) {
         includes.push(match[1])
     }
 
-    console.log(`Found ${includes.length} include(s) in ${htmlPath}:`, includes )
-    
-    for (const includePath of includes) {
+    console.log(`Found ${includes.length} include(s) in ${htmlPath}:`, includes)
+
+    for (let includePath of includes) {
         try {
-            const resolved = getSafeWebrootPath(webroot, includePath)
-            console.log(`Resolving include path: ${includePath} ->`, resolved)
-            if (!resolved) continue
-            
+            let resolved
+            if (!includePath.startsWith('/')) {
+                const folder = path.dirname(htmlPath)
+                const localPath = path.posix.join('/', path.relative(webroot, folder), includePath)
+                resolved = getSafeWebrootPath(webroot, localPath)
+            } else {
+                resolved = getSafeWebrootPath(webroot, includePath)
+            }
+
+            if (!resolved) {
+                console.warn(`Skipping include with invalid path: ${includePath} in ${htmlPath}`)
+                continue
+            }
+
+            console.log(`Processing include: ${includePath} in ${htmlPath} (resolved to ${resolved.relativePath})`)
             const stats = await fs.promises.stat(resolved.absolutePath)
-            if (!stats.isFile()) continue
-            
+            if (!stats.isFile()) {
+                console.warn(`Skipping include that is not a file: ${includePath} in ${htmlPath}`)
+                continue
+            }
+
+
             const includedContent = await fs.promises.readFile(resolved.absolutePath, 'utf-8')
             console.log(`Including content from ${resolved.relativePath} into ${htmlPath}`)
             content = content.replace(new RegExp(`<!--\\s*#include\\s*virtual\\s*=\\s*["']${includePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']\\s*-->`, 'g'), includedContent)
         } catch (err) {
             // Skip includes that cannot be read
+            console.warn(`Skipping include due to error: ${includePath} in ${htmlPath}`, err)
             continue
         }
     }
-    
+
     return content
 }
 
@@ -153,7 +169,7 @@ async function handleFile(request, reply, resolvedPath, webroot) {
             const content = await handleIncludes(resolvedPath.absolutePath, webroot)
             return reply.type('text/html').send(content)
         }
-        
+
         const stream = createReadStream(resolvedPath.absolutePath)
         stream.on('error', err => {
             request.log.error(err)
@@ -161,7 +177,7 @@ async function handleFile(request, reply, resolvedPath, webroot) {
                 reply.code(500).send({ error: 'Stream error' })
             }
         })
-        
+
         return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
     } catch (err) {
         request.log.error(err)
@@ -181,7 +197,7 @@ async function handleImage(request, reply, resolvedPath) {
     const dir = path.dirname(resolvedPath.absolutePath)
     const filename = path.basename(resolvedPath.absolutePath)
     const resizedDir = path.join(dir, '.resized')
-    
+
     // Ensure the resized directory exists
     await fs.promises.mkdir(resizedDir, { recursive: true })
     const resizedImagePath = path.join(resizedDir, `${filename}.${closestSize}`)
