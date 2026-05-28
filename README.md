@@ -1,5 +1,12 @@
 # fserver – a custom made web and api server
 
+## Capabilities
+- general web server
+  - handles server side includes (virtual only)
+  - can resizes images
+  - handles range request for video streaming
+- api server
+
 ## Modules used
 
 See package.json
