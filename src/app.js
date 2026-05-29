@@ -34,7 +34,7 @@ const createServer = async (config) => {
                     translateTime: 'HH:MM:ss Z',
                 },
             },
-            level: 'debug',
+            level: 'warn',
         },
         ...httpsOptions,
     })

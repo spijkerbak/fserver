@@ -170,9 +170,6 @@ async function handleImage(request, reply, resolvedPath) {
 
 const run = (webroot) => async (request, reply) => {
 
-    console.log("RUN")
-    console.log(webroot)
-
     const wildcardPath = request.params['*'] ?? ''
     const requestUrl = new URL(request.url, `http://${request.headers.host}`)
 
