@@ -18,7 +18,6 @@ const apiError = (request, reply, status, message) => {
     return reply.status(status).send({ status: status, message: message })
 }
 
-
 const run = (apiroot) => async (request, reply) => {
     const split = request.url.split('?')
     const queryParams = new URLSearchParams(split[1] || '')

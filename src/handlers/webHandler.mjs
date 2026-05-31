@@ -57,7 +57,7 @@ async function handleDirectory(request, reply, resolvedPath, requestUrl, webroot
     const indexStats = await fs.promises.stat(indexPath)
 
     if (!indexStats.isFile()) {
-        return reply.code(404).send({ error: 'File not found' })
+        return reply.code(404).send({ error: 'File not found (0)' })
     }
 
     try {
@@ -192,7 +192,7 @@ const run = (webroot) => async (request, reply) => {
     const resolvedPath = pathFinder.getSafeWebrootPath(webroot, decodedPath)
 
     if (!resolvedPath) {
-        return reply.code(404).send({ error: 'File not found' })
+        return reply.code(404).send({ error: 'File not found (1)' })
     }
 
     try {
@@ -201,7 +201,7 @@ const run = (webroot) => async (request, reply) => {
             return await handleDirectory(request, reply, resolvedPath, requestUrl, webroot)
         }
         if (!stats.isFile()) {
-            return reply.code(404).send({ error: 'File not found' })
+            return reply.code(404).send({ error: 'File not found (2)' })
         }
         if (!isAllowed(resolvedPath.absolutePath)) {
             return reply.code(403).send({ error: 'Forbidden' })
@@ -216,7 +216,8 @@ const run = (webroot) => async (request, reply) => {
         
     } catch (err) {
         if (err.code === 'ENOENT') {
-            return reply.code(404).send({ error: 'File not found' })
+            console.log(`File not found: ${resolvedPath.absolutePath}`)
+            return reply.code(404).send({ error: 'File not found (3)' })
         }
         return reply.code(500).send({ error: 'Internal Server Error (1)' })
     }

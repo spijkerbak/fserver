@@ -5,6 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import { loadConfig } from './config/config.mjs'
 import { webHandler } from './handlers/webHandler.mjs'
+import { webXHandler } from './handlers/webXHandler.mjs'
 import { apiHandler } from './handlers/apiHandler.mjs'
 
 const createServer = async (config) => {
@@ -80,11 +81,18 @@ const createServer = async (config) => {
         server.get(`${prefix}*`, webHandler.run(webRoot))
     }
 
+    // WebX routes
+    for (const [routePrefix, webXRoot] of Object.entries(config.webx_roots)) {
+        const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/'
+        server.get(`${prefix}*`, webXHandler.run(webXRoot))
+    }
+
     // API routes
     for (const [routePrefix, apiRoot] of Object.entries(config.api_roots)) {
         const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/'
         server.get(`${prefix}*`, apiHandler.run(apiRoot))
     }
+
     // Start listening for requests
     await server.listen({ host: config.host, port: config.port })
     return server
