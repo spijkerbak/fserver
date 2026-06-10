@@ -3,9 +3,11 @@ import path from 'path'
 
 import { pathFinder } from './pathFinder.mjs'
 
-const handleHtml = async (htmlPath, webroot) => {
+const handleHtml = async (htmlPath, webroot, parts) => {
     let content = await fs.promises.readFile(htmlPath, 'utf-8')
     const includeRegex = /<!--\s*#include\s+virtual\s*=\s*["']([^"']+)["']\s*-->/g
+
+    console.log(`Processing HTML: ${htmlPath} with ${parts.length} part(s)`) // --- IGNORE ---
 
     let match
     const includes = []

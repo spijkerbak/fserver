@@ -4,7 +4,8 @@ import mime from 'mime-types'
 import sharp from 'sharp'
 
 import { pathFinder } from './pathFinder.mjs'
-import { webHtmlHandler } from './webHtmlHandler'
+import { webHtmlHandler } from './webHtmlHandler.mjs'
+import { webMjsHandler } from './webMjsHandler.mjs'
 
 // ---- White list of allowed file types (security!) ----
 const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.svg']
@@ -48,28 +49,36 @@ const buildRedirectTarget = (pathname, search = '') => {
     return `${pathname}${search}`
 }
 
-async function handleDirectory(request, reply, resolvedPath, requestUrl, webroot) {
-    if (!requestUrl.pathname.endsWith('/')) {
+async function handleDirectory(request, reply, resolvedPath, requestUrl, webroot, parts) {
+
+    if (parts.length === 0 && !requestUrl.pathname.endsWith('/')) {
         return reply.redirect(buildRedirectTarget(`${requestUrl.pathname}/`, requestUrl.search))
     }
 
-    const indexPath = path.join(resolvedPath.absolutePath, 'index.html')
-    const indexStats = await fs.promises.stat(indexPath)
-
-    if (!indexStats.isFile()) {
-        return reply.code(404).send({ error: 'File not found (0)' })
+    let indexPath = path.join(resolvedPath.absolutePath, 'index.html')
+    if (await exists(indexPath)) {
+        try {
+            const content = await webHtmlHandler.handleHtml(indexPath, webroot, parts)
+            return reply.type('text/html').send(content)
+        } catch (err) {
+            request.log.error(err)
+            return reply.code(500).send({ error: 'Stream error' })
+        }
     }
-
-    try {
-        const content = await webHtmlHandler.handleHtml(indexPath, webroot)
-        return reply.type('text/html').send(content)
-    } catch (err) {
-        request.log.error(err)
-        return reply.code(500).send({ error: 'Stream error' })
+    indexPath = path.join(resolvedPath.absolutePath, 'index.mjs')
+    if (await exists(indexPath)) {
+        try {
+            const content = await webMjsHandler.handleMjs(indexPath, webroot, parts)
+            return reply.type('text/html').send(content)
+        } catch (err) {
+            request.log.error(err)
+            return reply.code(500).send({ error: 'Stream error' })
+        }
+        return reply.code(403).send({ error: 'Forbidden' })
     }
 }
 
-function handleRange(request, reply, resolvedPath, stats) {
+async function handleRange(request, reply, resolvedPath, stats) {
     const range = request.headers.range
     const [startStr, endStr] = range.replace(/bytes=/, '').split('-')
     const start = parseInt(startStr, 10)
@@ -100,10 +109,10 @@ function handleRange(request, reply, resolvedPath, stats) {
     return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
 }
 
-async function handleFile(request, reply, resolvedPath, webroot) {
+async function handleFile(request, reply, resolvedPath, webroot, parts) {
     try {
         if (isHtml(resolvedPath.absolutePath)) {
-            const content = await webHtmlHandler.handleHtml(resolvedPath.absolutePath, webroot)
+            const content = await webHtmlHandler.handleHtml(resolvedPath.absolutePath, webroot, parts ?? [])
             return reply.type('text/html').send(content)
         }
 
@@ -168,6 +177,12 @@ async function handleImage(request, reply, resolvedPath) {
     }
 }
 
+function exists(path) {
+    return fs.promises.access(path, fs.constants.F_OK)
+        .then(() => true)
+        .catch(() => false)
+}
+
 const run = (webroot) => async (request, reply) => {
 
     const wildcardPath = request.params['*'] ?? ''
@@ -189,16 +204,44 @@ const run = (webroot) => async (request, reply) => {
         return reply.redirect(buildRedirectTarget(redirectPath, requestUrl.search))
     }
 
-    const resolvedPath = pathFinder.getSafeWebrootPath(webroot, decodedPath)
+    let resolvedPath = pathFinder.getSafeWebrootPath(webroot, decodedPath)
 
     if (!resolvedPath) {
-        return reply.code(404).send({ error: 'File not found (1)' })
+        return reply.code(404).send({ error: 'File not found (0)' })
     }
 
     try {
+        let pathExists = await exists(resolvedPath.absolutePath)
+        let parts = []
+        if (!pathExists) {
+            resolvedPath = pathFinder.getSafeWebrootPath(webroot, `${decodedPath}/../`)
+            parts = decodedPath.split('/').filter(Boolean).slice(-1)
+            pathExists = await exists(resolvedPath.absolutePath)
+        }
+        if (!pathExists) {
+            resolvedPath = pathFinder.getSafeWebrootPath(webroot, `${decodedPath}/../../`)
+            parts = decodedPath.split('/').filter(Boolean).slice(-2)
+            pathExists = await exists(resolvedPath.absolutePath)
+        }
+        if (!pathExists) {
+            resolvedPath = pathFinder.getSafeWebrootPath(webroot, `${decodedPath}/../../../`)
+            parts = decodedPath.split('/').filter(Boolean).slice(-3)
+            pathExists = await exists(resolvedPath.absolutePath)
+        }
+        console.log(`Resolved path for request "${request.url}":`, {
+            decodedPath,
+            resolvedPath: resolvedPath ? resolvedPath.absolutePath : null,
+            pathExists,
+            parts
+        })
+        if (!pathExists) {
+            return reply.code(404).send({ error: `File not found (1) (${resolvedPath.absolutePath})` })
+        }
         const stats = await fs.promises.stat(resolvedPath.absolutePath)
+
         if (stats.isDirectory()) {
-            return await handleDirectory(request, reply, resolvedPath, requestUrl, webroot)
+            console.log(`Handling directory request for ${resolvedPath.relativePath}`)
+            return await handleDirectory(request, reply, resolvedPath, requestUrl, webroot, parts)
         }
         if (!stats.isFile()) {
             return reply.code(404).send({ error: 'File not found (2)' })
@@ -213,11 +256,11 @@ const run = (webroot) => async (request, reply) => {
             return await handleImage(request, reply, resolvedPath)
         }
         return await handleFile(request, reply, resolvedPath, webroot)
-        
+
     } catch (err) {
         if (err.code === 'ENOENT') {
             console.log(`File not found: ${resolvedPath.absolutePath}`)
-            return reply.code(404).send({ error: 'File not found (3)' })
+            return reply.code(404).send({ error: `File not found (3) (${resolvedPath.absolutePath})` })
         }
         return reply.code(500).send({ error: 'Internal Server Error (1)' })
     }
