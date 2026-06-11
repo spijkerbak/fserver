@@ -64,13 +64,13 @@ async function handleDirectory(request, reply, absolutePath, requestUrl, webroot
             return reply.code(500).send({ error: 'Stream error' })
         }
     }
-    indexPath = path.join(absolutePath, 'index.mjs')
+    indexPath = path.join(absolutePath, 'run.mjs')
     if (await exists(indexPath)) {
         try {
 
             const module = await import(indexPath)
             if (typeof module.run === 'function') {
-                return await module.run(request, reply, parts)
+                return await module.run(request, reply, absolutePath, parts, handleImage)
             }
             return reply.code(403).send({ error: 'Forbidden' })
         }
@@ -128,6 +128,7 @@ async function handleFile(request, reply, absolutePath, webroot, parts) {
         })
 
         return reply.type(getContentType(absolutePath)).send(stream)
+
     } catch (err) {
         request.log.error(err)
         return reply.code(500).send({ error: 'Stream error' })
@@ -135,8 +136,12 @@ async function handleFile(request, reply, absolutePath, webroot, parts) {
 }
 
 async function handleImage(request, reply, absolutePath) {
+
+    console.log(`Handling image request for ${absolutePath} with query:`, request.query)
+
     const sizes = [100, 200, 400, 800, 1200, 1600, 2000, 3000, 4000]
     const requestedWidth = parseInt(request.query.width, 10)
+
 
     // If no valid width is requested, serve the original image
     if (isNaN(requestedWidth) || requestedWidth <= 0) {
