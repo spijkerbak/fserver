@@ -19,29 +19,28 @@ const handleHtml = async (htmlPath, webroot, parts) => {
 
     for (let includePath of includes) {
         try {
-            let resolved
+            let absoluteIncludePath
             if (!includePath.startsWith('/')) {
                 const folder = path.dirname(htmlPath)
                 const localPath = path.posix.join('/', path.relative(webroot, folder), includePath)
-                resolved = pathFinder.getSafeWebrootPath(webroot, localPath)
+                absoluteIncludePath = pathFinder.getAbsolutePath(webroot, localPath)
             } else {
-                resolved = pathFinder.getSafeWebrootPath(webroot, includePath)
+                absoluteIncludePath = pathFinder.getAbsolutePath(webroot, includePath)
             }
 
-            if (!resolved) {
+            if (!absoluteIncludePath) {
                 console.warn(`Skipping include with invalid path: ${includePath} in ${htmlPath}`)
                 continue
             }
 
-            // console.log(`Processing include: ${includePath} in ${htmlPath} (resolved to ${resolved.relativePath})`)
-            const stats = await fs.promises.stat(resolved.absolutePath)
+            // console.log(`Processing include: ${includePath} in ${htmlPath} (resolved to ${absoluteIncludePath})`)
+            const stats = await fs.promises.stat(absoluteIncludePath)
             if (!stats.isFile()) {
                 console.warn(`Skipping include that is not a file: ${includePath} in ${htmlPath}`)
                 continue
             }
 
-            const includedContent = await fs.promises.readFile(resolved.absolutePath, 'utf-8')
-            // console.log(`Including content from ${resolved.relativePath} into ${htmlPath}`)
+            const includedContent = await fs.promises.readFile(absoluteIncludePath, 'utf-8')
 
             const escapedPath = includePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
             content = content.replace(new RegExp(`<!--\\s*#include\\s*virtual\\s*=\\s*["']${escapedPath}["']\\s*-->`, 'g'), includedContent)

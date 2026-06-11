@@ -5,7 +5,6 @@ import sharp from 'sharp'
 
 import { pathFinder } from './pathFinder.mjs'
 import { webHtmlHandler } from './webHtmlHandler.mjs'
-import { webMjsHandler } from './webMjsHandler.mjs'
 
 // ---- White list of allowed file types (security!) ----
 const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.svg']
@@ -49,13 +48,13 @@ const buildRedirectTarget = (pathname, search = '') => {
     return `${pathname}${search}`
 }
 
-async function handleDirectory(request, reply, resolvedPath, requestUrl, webroot, parts) {
+async function handleDirectory(request, reply, absolutePath, requestUrl, webroot, parts) {
 
     if (parts.length === 0 && !requestUrl.pathname.endsWith('/')) {
         return reply.redirect(buildRedirectTarget(`${requestUrl.pathname}/`, requestUrl.search))
     }
 
-    let indexPath = path.join(resolvedPath.absolutePath, 'index.html')
+    let indexPath = path.join(absolutePath, 'index.html')
     if (await exists(indexPath)) {
         try {
             const content = await webHtmlHandler.handleHtml(indexPath, webroot, parts)
@@ -65,20 +64,24 @@ async function handleDirectory(request, reply, resolvedPath, requestUrl, webroot
             return reply.code(500).send({ error: 'Stream error' })
         }
     }
-    indexPath = path.join(resolvedPath.absolutePath, 'index.mjs')
+    indexPath = path.join(absolutePath, 'index.mjs')
     if (await exists(indexPath)) {
         try {
-            const content = await webMjsHandler.handleMjs(indexPath, webroot, parts)
-            return reply.type('text/html').send(content)
-        } catch (err) {
-            request.log.error(err)
-            return reply.code(500).send({ error: 'Stream error' })
+
+            const module = await import(indexPath)
+            if (typeof module.run === 'function') {
+                return await module.run(request, reply, parts)
+            }
+            return reply.code(403).send({ error: 'Forbidden' })
         }
-        return reply.code(403).send({ error: 'Forbidden' })
+        catch (err) {
+            request.log.error(err)
+            return reply.code(500).send({ error: 'Import error' })
+        }
     }
 }
 
-async function handleRange(request, reply, resolvedPath, stats) {
+async function handleRange(request, reply, absolutePath, stats) {
     const range = request.headers.range
     const [startStr, endStr] = range.replace(/bytes=/, '').split('-')
     const start = parseInt(startStr, 10)
@@ -90,10 +93,10 @@ async function handleRange(request, reply, resolvedPath, stats) {
 
     const startpct = ((start / stats.size) * 100).toFixed(2)
     const endpct = ((end / stats.size) * 100).toFixed(2)
-    request.log.debug(`Range from ${startpct}% to ${endpct}% for ${resolvedPath.relativePath}`)
+    request.log.debug(`Range from ${startpct}% to ${endpct}% for ${absolutePath}`)
 
     const chunkSize = (end - start) + 1
-    const stream = createReadStream(resolvedPath.absolutePath, { start, end })
+    const stream = createReadStream(absolutePath, { start, end })
 
     stream.on('error', err => {
         request.log.error(err)
@@ -106,17 +109,17 @@ async function handleRange(request, reply, resolvedPath, stats) {
     reply.header('Content-Range', `bytes ${start}-${end}/${stats.size}`)
     reply.header('Accept-Ranges', 'bytes')
     reply.header('Content-Length', chunkSize)
-    return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
+    return reply.type(getContentType(absolutePath)).send(stream)
 }
 
-async function handleFile(request, reply, resolvedPath, webroot, parts) {
+async function handleFile(request, reply, absolutePath, webroot, parts) {
     try {
-        if (isHtml(resolvedPath.absolutePath)) {
-            const content = await webHtmlHandler.handleHtml(resolvedPath.absolutePath, webroot, parts ?? [])
+        if (isHtml(absolutePath)) {
+            const content = await webHtmlHandler.handleHtml(absolutePath, webroot, parts ?? [])
             return reply.type('text/html').send(content)
         }
 
-        const stream = createReadStream(resolvedPath.absolutePath)
+        const stream = createReadStream(absolutePath)
         stream.on('error', err => {
             request.log.error(err)
             if (!reply.sent) {
@@ -124,24 +127,24 @@ async function handleFile(request, reply, resolvedPath, webroot, parts) {
             }
         })
 
-        return reply.type(getContentType(resolvedPath.absolutePath)).send(stream)
+        return reply.type(getContentType(absolutePath)).send(stream)
     } catch (err) {
         request.log.error(err)
         return reply.code(500).send({ error: 'Stream error' })
     }
 }
 
-async function handleImage(request, reply, resolvedPath) {
+async function handleImage(request, reply, absolutePath) {
     const sizes = [100, 200, 400, 800, 1200, 1600, 2000, 3000, 4000]
     const requestedWidth = parseInt(request.query.width, 10)
 
     // If no valid width is requested, serve the original image
     if (isNaN(requestedWidth) || requestedWidth <= 0) {
-        return handleFile(request, reply, resolvedPath)
+        return handleFile(request, reply, absolutePath)
     }
     const closestSize = sizes.find(size => size >= requestedWidth) || sizes[sizes.length - 1]
-    const dir = path.dirname(resolvedPath.absolutePath)
-    const filename = path.basename(resolvedPath.absolutePath)
+    const dir = path.dirname(absolutePath)
+    const filename = path.basename(absolutePath)
     const resizedDir = path.join(dir, '.resized')
 
     // Ensure the resized directory exists
@@ -155,8 +158,8 @@ async function handleImage(request, reply, resolvedPath) {
             await fs.promises.stat(resizedImagePath)
         } catch {
             // File doesn't exist, create it
-            request.log.debug(`Resizing image ${resolvedPath.relativePath} to width ${closestSize}px (requested: ${requestedWidth}px)`)
-            await sharp(resolvedPath.absolutePath).resize({ width: closestSize }).toFile(resizedImagePath)
+            request.log.debug(`Resizing image ${absolutePath} to width ${closestSize}px (requested: ${requestedWidth}px)`)
+            await sharp(absolutePath).resize({ width: closestSize }).toFile(resizedImagePath)
         }
 
         const stream = createReadStream(resizedImagePath)
@@ -204,63 +207,63 @@ const run = (webroot) => async (request, reply) => {
         return reply.redirect(buildRedirectTarget(redirectPath, requestUrl.search))
     }
 
-    let resolvedPath = pathFinder.getSafeWebrootPath(webroot, decodedPath)
+    let absolutePath = pathFinder.getAbsolutePath(webroot, decodedPath)
 
-    if (!resolvedPath) {
+    if (!absolutePath) {
         return reply.code(404).send({ error: 'File not found (0)' })
     }
 
     try {
-        let pathExists = await exists(resolvedPath.absolutePath)
+        let pathExists = await exists(absolutePath)
         let parts = []
         if (!pathExists) {
-            resolvedPath = pathFinder.getSafeWebrootPath(webroot, `${decodedPath}/../`)
+            absolutePath = pathFinder.getAbsolutePath(webroot, `${decodedPath}/../`)
             parts = decodedPath.split('/').filter(Boolean).slice(-1)
-            pathExists = await exists(resolvedPath.absolutePath)
+            pathExists = await exists(absolutePath)
         }
         if (!pathExists) {
-            resolvedPath = pathFinder.getSafeWebrootPath(webroot, `${decodedPath}/../../`)
+            absolutePath = pathFinder.getAbsolutePath(webroot, `${decodedPath}/../../`)
             parts = decodedPath.split('/').filter(Boolean).slice(-2)
-            pathExists = await exists(resolvedPath.absolutePath)
+            pathExists = await exists(absolutePath)
         }
         if (!pathExists) {
-            resolvedPath = pathFinder.getSafeWebrootPath(webroot, `${decodedPath}/../../../`)
+            absolutePath = pathFinder.getAbsolutePath(webroot, `${decodedPath}/../../../`)
             parts = decodedPath.split('/').filter(Boolean).slice(-3)
-            pathExists = await exists(resolvedPath.absolutePath)
+            pathExists = await exists(absolutePath)
         }
         console.log(`Resolved path for request "${request.url}":`, {
             decodedPath,
-            resolvedPath: resolvedPath ? resolvedPath.absolutePath : null,
+            absolutePath,
             pathExists,
             parts
         })
         if (!pathExists) {
-            return reply.code(404).send({ error: `File not found (1) (${resolvedPath.absolutePath})` })
+            return reply.code(404).send({ error: `File not found (1) (${absolutePath})` })
         }
-        const stats = await fs.promises.stat(resolvedPath.absolutePath)
+        const stats = await fs.promises.stat(absolutePath)
 
         if (stats.isDirectory()) {
-            console.log(`Handling directory request for ${resolvedPath.relativePath}`)
-            return await handleDirectory(request, reply, resolvedPath, requestUrl, webroot, parts)
+            console.log(`Handling directory request for ${absolutePath} with parts:`, parts)
+            return await handleDirectory(request, reply, absolutePath, requestUrl, webroot, parts)
         }
         if (!stats.isFile()) {
             return reply.code(404).send({ error: 'File not found (2)' })
         }
-        if (!isAllowed(resolvedPath.absolutePath)) {
+        if (!isAllowed(absolutePath)) {
             return reply.code(403).send({ error: 'Forbidden' })
         }
         if (request.headers.range) {
-            return handleRange(request, reply, resolvedPath, stats)
+            return handleRange(request, reply, absolutePath, stats)
         }
-        if (isImage(resolvedPath.absolutePath)) {
-            return await handleImage(request, reply, resolvedPath)
+        if (isImage(absolutePath)) {
+            return await handleImage(request, reply, absolutePath)
         }
-        return await handleFile(request, reply, resolvedPath, webroot)
+        return await handleFile(request, reply, absolutePath, webroot)
 
     } catch (err) {
         if (err.code === 'ENOENT') {
-            console.log(`File not found: ${resolvedPath.absolutePath}`)
-            return reply.code(404).send({ error: `File not found (3) (${resolvedPath.absolutePath})` })
+            console.log(`File not found: ${absolutePath}`)
+            return reply.code(404).send({ error: `File not found (3) (${absolutePath})` })
         }
         return reply.code(500).send({ error: 'Internal Server Error (1)' })
     }
