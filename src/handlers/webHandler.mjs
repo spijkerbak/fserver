@@ -74,7 +74,7 @@ async function handleDirectory(request, reply, prep) {
 
             const module = await import(indexPath)
             if (typeof module.run === 'function') {
-                return await module.run(request, reply, prep.realPath, prep.parts, handleImage)
+                return await module.run(request, reply, prep, handleImage)
             }
     console.log(4)
             return reply.code(403).send({ error: 'Forbidden' })
