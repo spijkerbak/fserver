@@ -10,10 +10,8 @@ import { apiHandler } from './handlers/apiHandler.mjs'
 const createServer = async (config) => {
     // Try to load SSL certificate and key
     let httpsOptions = undefined
-    // const keyPath = path.resolve(config.ssl_key)
-    // const certPath = path.resolve(config.ssl_cert)
-    const keyPath = path.resolve(config.ssl_key)
-    const certPath = path.resolve(config.ssl_cert)
+    const keyPath = path.resolve(config.ssl.key)
+    const certPath = path.resolve(config.ssl.cert)
     if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
         httpsOptions = {
             http2: true,

@@ -3,7 +3,7 @@ import path from 'path'
 
 import { pathFinder } from './pathFinder.mjs'
 
-const handleHtml = async (htmlPath, webroot, parts) => {
+const fillTemplate = async (htmlPath, webroot, parts) => {
     let content = await fs.promises.readFile(htmlPath, 'utf-8')
     const includeRegex = /<!--\s*#include\s+virtual\s*=\s*["']([^"']+)["']\s*-->/g
 
@@ -23,9 +23,9 @@ const handleHtml = async (htmlPath, webroot, parts) => {
             if (!includePath.startsWith('/')) {
                 const folder = path.dirname(htmlPath)
                 const localPath = path.posix.join('/', path.relative(webroot, folder), includePath)
-                absoluteIncludePath = pathFinder.getAbsolutePath(webroot, localPath)
+                absoluteIncludePath = pathFinder.getRealPath(webroot, localPath)
             } else {
-                absoluteIncludePath = pathFinder.getAbsolutePath(webroot, includePath)
+                absoluteIncludePath = pathFinder.getRealPath(webroot, includePath)
             }
 
             if (!absoluteIncludePath) {
@@ -54,9 +54,9 @@ const handleHtml = async (htmlPath, webroot, parts) => {
     return content
 }
 
-const webHtmlHandler = {
-    handleHtml: handleHtml
+const templateHandler = {
+    fillTemplate: fillTemplate
 }
 
-export { webHtmlHandler }
+export { templateHandler }
 

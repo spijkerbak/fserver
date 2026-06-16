@@ -8,7 +8,7 @@ import path from 'path'
  * @returns {string | null} The absolute path, or null if path escapes webroot
  */
 
-const getAbsolutePath = (webroot, requestPath) => {
+const getRealPath = (webroot, requestPath) => {
     const normalizedPath = path.posix.normalize(`/${requestPath || ''}`)
     const relativePath = normalizedPath.replace(/^\/+/, '')
     const absolutePath = path.resolve(webroot, relativePath)
@@ -22,7 +22,7 @@ const getAbsolutePath = (webroot, requestPath) => {
 }
 
 const pathFinder = {
-    getAbsolutePath: getAbsolutePath
+    getRealPath: getRealPath
 }
 
 export { pathFinder }

@@ -12,6 +12,7 @@
     "api_roots": {
         "/api": "./public/api"
     },
-    "ssl_key": "./ssl-localhost/localhost.key",
-    "ssl_cert": "./ssl-localhost/localhost.crt"
+    "ssl": {
+        "key": "./ssl-localhost/localhost.key",
+        "cert": "./ssl-localhost/localhost.crt"
 }

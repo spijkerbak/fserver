@@ -18,8 +18,10 @@ const default_config =
     "api_roots": {
         "/api": "public/api"
     },
-    "ssl_key": "ssl/key.pem",
-    "ssl_cert": "ssl/cert.pem"
+    "ssl": {
+        "key": "ssl/key.pem",
+        "cert": "ssl/cert.pem"
+    }
 }
 
 const configPath = path.join(__dirname, '../../' , 'config.json')
