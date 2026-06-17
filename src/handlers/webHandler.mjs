@@ -48,19 +48,29 @@ const buildRedirectTarget = (pathname, search = '') => {
     return `${pathname}${search}`
 }
 
+async function handleData(request, reply, prep, mimeType, content) {
+    if (content) {
+        return reply.type(mimeType).send(content)
+    } else {
+        if (mimeType === 'text/html') {
+            return handleFile(request, reply, prep)
+        }
+        if (mimeType.startsWith('image/')) {
+            return await handleImage(request, reply, prep)
+        }
+        return reply.type('text/plain').send('No content available for mimetype: ' + mimeType)
+    }
+}
+
 async function handleDirectory(request, reply, prep) {
 
     if (prep.parts.length === 0 && !prep.requestUrl.pathname.endsWith('/')) {
         return reply.redirect(buildRedirectTarget(`${prep.requestUrl.pathname}/`, prep.requestUrl.search))
     }
 
-    console.log(1)
-    
     let indexPath = path.join(prep.realPath, 'index.html')
-    console.log(2)
     if (await exists(indexPath)) {
         try {
-    console.log(3)
             const content = await templateHandler.fillTemplate(indexPath, prep.webroot, prep.parts)
             return reply.type('text/html').send(content)
         } catch (err) {
@@ -71,12 +81,10 @@ async function handleDirectory(request, reply, prep) {
     indexPath = path.join(prep.realPath, 'run.mjs')
     if (await exists(indexPath)) {
         try {
-
             const module = await import(indexPath)
             if (typeof module.run === 'function') {
-                return await module.run(request, reply, prep, handleImage)
+                return await module.run(request, reply, prep, handleData)
             }
-    console.log(4)
             return reply.code(403).send({ error: 'Forbidden' })
         }
         catch (err) {
@@ -249,7 +257,7 @@ const run = (webroot) => async (request, reply) => {
         })
         if (!pathExists) {
             return reply.code(404).send({ error: `File not found (1) (${realPath})` })
-        }   
+        }
         const stats = await fs.promises.stat(realPath)
 
         const prep = {
