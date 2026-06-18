@@ -153,7 +153,7 @@ async function handleImage(request, reply, prep) {
     console.log(`Handling image request for ${prep.realPath} with query:`, request.query)
 
     const sizes = [100, 200, 400, 800, 1200, 1600, 2000, 3000, 4000]
-    const requestedWidth = parseInt(request.query.width, 10)
+    const requestedWidth = parseInt(request.query.width, 10) || parseInt(request.query.height, 10)
 
     // If no valid width is requested, serve the original image
     if (isNaN(requestedWidth) || requestedWidth <= 0) {
@@ -165,7 +165,9 @@ async function handleImage(request, reply, prep) {
     const resizedDir = path.join(dir, '.resized')
 
     // Ensure the resized directory exists
-    await fs.promises.mkdir(resizedDir, { recursive: true })
+    await fs.promises.mkdir(resizedDir, { recursive: true, mode: 0o777 })
+    await fs.promises.chmod(resizedDir, 0o777) 
+    
     const resizedImagePath = path.join(resizedDir, `${filename}.${closestSize}`)
 
     try {
@@ -177,6 +179,7 @@ async function handleImage(request, reply, prep) {
             // File doesn't exist, create it
             request.log.debug(`Resizing image ${prep.realPath} to width ${closestSize}px (requested: ${requestedWidth}px)`)
             await sharp(prep.realPath).resize({ width: closestSize }).toFile(resizedImagePath)
+            await fs.promises.chmod(resizedImagePath, 0o777) 
         }
 
         const stream = createReadStream(resizedImagePath)
