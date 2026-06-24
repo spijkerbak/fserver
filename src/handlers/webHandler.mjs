@@ -7,7 +7,7 @@ import { pathFinder } from './pathFinder.mjs'
 import { templateHandler } from './templateHandler.mjs'
 
 // ---- White list of allowed file types (security!) ----
-const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.svg']
+const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.svg', '.gif', '.tiff', '.bmp', '.webp']
 const VIDEO_EXT = ['.mp4', '.webm', '.ogg', '.mkv', '.avi', '.mov', '.m4v']
 const AUDIO_EXT = ['.mp3', '.wav', '.ogg']
 const DOC_EXT = ['.pdf', '.docx', '.xlsx', '.pptx']
@@ -150,7 +150,11 @@ async function handleFile(request, reply, prep) {
 
 async function handleImage(request, reply, prep) {
 
-    console.log(`Handling image request for ${prep.realPath} with query:`, request.query)
+    let msg = `Handling image request for ${prep.realPath}`
+    if (request.query) {
+        msg += ` with query: ${JSON.stringify(request.query)}`
+    }
+    console.log(msg)
 
     const sizes = [100, 200, 400, 800, 1200, 1600, 2000, 3000, 4000]
     const requestedWidth = parseInt(request.query.width, 10) || parseInt(request.query.height, 10)
@@ -252,12 +256,12 @@ const run = (webroot) => async (request, reply) => {
             parts = decodedPath.split('/').filter(Boolean).slice(-3)
             pathExists = await exists(realPath)
         }
-        console.log(`Resolved path for request "${request.url}":`, {
-            decodedPath,
-            realPath,
-            pathExists,
-            parts
-        })
+        // console.log(`Resolved path for request "${request.url}":`, {
+        //     decodedPath,
+        //     realPath,
+        //     pathExists,
+        //     parts
+        // })
         if (!pathExists) {
             return reply.code(404).send({ error: `File not found (1) (${realPath})` })
         }
@@ -272,7 +276,7 @@ const run = (webroot) => async (request, reply) => {
             parts: parts,
         }
 
-        console.log(`Handling request for ${realPath} with prep:`, prep)
+        // console.log(`Handling request for ${realPath} with prep:`, prep)
 
         prep.stats = stats
 
