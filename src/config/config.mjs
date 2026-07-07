@@ -15,9 +15,6 @@ const default_config =
         "/": "public/web",
         "/media": "/mnt/media"
     },
-    "api_roots": {
-        "/api": "public/api"
-    },
     "ssl": {
         "key": "ssl/key.pem",
         "cert": "ssl/cert.pem"

@@ -5,7 +5,6 @@ import fs from 'fs'
 import path from 'path'
 import { loadConfig } from './config/config.mjs'
 import { webHandler } from './handlers/webHandler.mjs'
-import { apiHandler } from './handlers/apiHandler.mjs'
 
 const createServer = async (config) => {
     // Try to load SSL certificate and key
@@ -76,12 +75,6 @@ const createServer = async (config) => {
     for (const [routePrefix, webRoot] of Object.entries(config.web_roots)) {
         const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/'
         server.get(`${prefix}*`, webHandler.run(webRoot))
-    }
-
-    // API routes
-    for (const [routePrefix, apiRoot] of Object.entries(config.api_roots)) {
-        const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/'
-        server.get(`${prefix}*`, apiHandler.run(apiRoot))
     }
 
     // Start listening for requests

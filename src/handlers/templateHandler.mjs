@@ -3,19 +3,30 @@ import path from 'path'
 
 import { pathFinder } from './pathFinder.mjs'
 
-const fillTemplate = async (htmlPath, webroot, parts) => {
+const fillTemplate = async (htmlPath, webroot, values) => {
     let content = await fs.promises.readFile(htmlPath, 'utf-8')
     const includeRegex = /<!--\s*#include\s+virtual\s*=\s*["']([^"']+)["']\s*-->/g
+    const variableRegex = /<!=\s*([^\s!]+)\s*!>/g
 
-    console.log(`Processing HTML: ${htmlPath} with ${parts.length} part(s)`) // --- IGNORE ---
+    console.log(`Processing HTML: ${htmlPath} with ${JSON.stringify(values)}`) // --- IGNORE ---
 
     let match
     const includes = []
+    const variables = []
     while ((match = includeRegex.exec(content)) !== null) {
         includes.push(match[1])
     }
+    while ((match = variableRegex.exec(content)) !== null) {
+        variables.push(match[1])
+    }
 
-    // console.log(`Found ${includes.length} include(s) in ${htmlPath}:`, includes)
+    console.log(`Found ${includes.length} include(s) in ${htmlPath}:`, includes)
+    console.log(`Found ${variables.length} variable(s) in ${htmlPath}:`, variables)
+
+    for (let variable of variables) {
+        const value = values[variable] || ''
+        content = content.replace(new RegExp(`<!=\\s*${variable}\\s*!>`, 'g'), value)
+    }   
 
     for (let includePath of includes) {
         try {

@@ -9,10 +9,8 @@
         "/": "./public/web",
         "/video": "./public/video"
     },
-    "api_roots": {
-        "/api": "./public/api"
-    },
     "ssl": {
         "key": "./ssl-localhost/localhost.key",
         "cert": "./ssl-localhost/localhost.crt"
+    }
 }

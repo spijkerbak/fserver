@@ -58,6 +58,9 @@ async function handleData(request, reply, prep, mimeType, content) {
         if (mimeType.startsWith('image/')) {
             return await handleImage(request, reply, prep)
         }
+        if (mimeType.startsWith('video/')) {
+            return await handleFile(request, reply, prep)
+        }
         return reply.type('text/plain').send('No content available for mimetype: ' + mimeType)
     }
 }
@@ -71,7 +74,7 @@ async function handleDirectory(request, reply, prep) {
     let indexPath = path.join(prep.realPath, 'index.html')
     if (await exists(indexPath)) {
         try {
-            const content = await templateHandler.fillTemplate(indexPath, prep.webroot, prep.parts)
+            const content = await templateHandler.fillTemplate(indexPath, prep.webroot, {})
             return reply.type('text/html').send(content)
         } catch (err) {
             request.log.error(err)
@@ -126,9 +129,24 @@ async function handleRange(request, reply, prep) {
 }
 
 async function handleFile(request, reply, prep) {
+
+    console.log(`Handling file request for ${prep.realPath}`)
+    // in some cases, realPath may still contain query parameters
+    // so parse them and remove them from the realPath if necessary
+    let query = {}
+    let parts = prep.realPath.split('?')
+    if (parts.length > 1) {
+        prep.realPath = parts[0]
+        request.log.debug(`Stripped query parameters from realPath: ${prep.realPath}`)
+        query = Object.fromEntries(new URLSearchParams(parts[1]))
+        console.log(`CORRECTION: file request for ${prep.realPath}`)
+        console.log(JSON.stringify(request, null, 2))
+
+    }
+
     try {
         if (isHtml(prep.realPath)) {
-            const content = await templateHandler.fillTemplate(prep.realPath, prep.webroot, prep.parts ?? [])
+            const content = await templateHandler.fillTemplate(prep.realPath, prep.webroot, query)
             return reply.type('text/html').send(content)
         }
 
@@ -139,6 +157,7 @@ async function handleFile(request, reply, prep) {
                 reply.code(500).send({ error: 'Stream error' })
             }
         })
+
 
         return reply.type(getContentType(prep.realPath)).send(stream)
 
@@ -170,8 +189,8 @@ async function handleImage(request, reply, prep) {
 
     // Ensure the resized directory exists
     await fs.promises.mkdir(resizedDir, { recursive: true, mode: 0o777 })
-    await fs.promises.chmod(resizedDir, 0o777) 
-    
+    await fs.promises.chmod(resizedDir, 0o777)
+
     const resizedImagePath = path.join(resizedDir, `${filename}.${closestSize}`)
 
     try {
@@ -183,7 +202,7 @@ async function handleImage(request, reply, prep) {
             // File doesn't exist, create it
             request.log.debug(`Resizing image ${prep.realPath} to width ${closestSize}px (requested: ${requestedWidth}px)`)
             await sharp(prep.realPath).resize({ width: closestSize }).toFile(resizedImagePath)
-            await fs.promises.chmod(resizedImagePath, 0o777) 
+            await fs.promises.chmod(resizedImagePath, 0o777)
         }
 
         const stream = createReadStream(resizedImagePath)
@@ -276,10 +295,10 @@ const run = (webroot) => async (request, reply) => {
             parts: parts,
         }
 
-        // console.log(`Handling request for ${realPath} with prep:`, prep)
 
         prep.stats = stats
 
+        reply.header('Accept-Ranges', 'bytes')
 
         if (stats.isDirectory()) {
             console.log(`Handling directory request for ${realPath} with parts:`, parts)
@@ -292,6 +311,7 @@ const run = (webroot) => async (request, reply) => {
             return reply.code(403).send({ error: 'Forbidden' })
         }
         if (request.headers.range) {
+            console.log(`RANGE REQUEST for ${realPath} with range: ${request.headers.range}`)
             return handleRange(request, reply, prep)
         }
         if (isImage(realPath)) {
