@@ -104,14 +104,12 @@ async function handleDirectory(request, reply, prep) {
 
     let indexPath = path.join(prep.realPath, 'index.html')
     if (await exists(indexPath)) {
-        prep.realPath = indexPath
-        prep.stats = await fs.promises.stat(prep.realPath)
-
-        return handleFile(request, reply, prep)
+        prep.setRealPath(indexPath)
+        return await handleFile(request, reply, prep)
     }
     let runnerPath = path.join(prep.realPath, 'run.mjs')
     if (await exists(runnerPath)) {
-        return handleRuner(request, reply, prep)
+        return await handleRuner(request, reply, prep)
     }
 }
 
@@ -148,16 +146,15 @@ async function handleRange(request, reply, prep) {
 
 async function handleFile(request, reply, prep) {
 
-    console.log(`Handling file request for ${prep.realPath}`)
+    console.log(`Handling file request for ${prep.realPath} (${prep.stats.size} bytes)`)
     // in some cases, realPath may still contain query parameters
     // so parse them and remove them from the realPath if necessary
     let query = {}
     let parts = prep.realPath.split('?')
     if (parts.length > 1) {
-        prep.realPath = parts[0]
-        prep.stats = await fs.promises.stat(prep.realPath)
+        prep.setRealPath(parts[0])
 
-        request.log.debug(`Stripped query parameters from realPath: ${prep.realPath}`)
+        console.log(`Stripped query parameters from realPath: ${prep.realPath}`)
         query = Object.fromEntries(new URLSearchParams(parts[1]))
         console.log(`CORRECTION: file request for ${prep.realPath}`)
         console.log(JSON.stringify(request, null, 2))
@@ -177,7 +174,7 @@ async function handleFile(request, reply, prep) {
         if (fileSize <= MAXCHUNK_SIZE) {
             console.log(`Small file`)
         } else {
-            console.log(`Large file, serving first 16KB`)
+            console.log(`Large file, serving first chunk of ${chunkSize} bytes (0-${end}) of total ${fileSize} bytes`)
             reply.code(206)
             reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`)
             reply.header('Accept-Ranges', 'bytes')
@@ -312,13 +309,17 @@ const run = (webroot) => async (request, reply) => {
         const prep = {
             hostname: hostname,
             decodedPath: decodedPath,
-            realPath: realPath,
             requestUrl: requestUrl,
             webroot: webroot,
             parts: parts,
-            stats: null
+            realPath: null,
+            stats: null,
+            setRealPath: async function (newPath) {
+                this.realPath = newPath
+                this.stats = await fs.promises.stat(this.realPath)
+            }
         }
-        prep.stats = await fs.promises.stat(realPath)
+        await prep.setRealPath(realPath)
 
         if (prep.stats.isDirectory()) {
             console.log(`Handling directory request for ${prep.realPath} with parts:`, prep.parts)
