@@ -169,25 +169,28 @@ async function handleFile(request, reply, prep) {
             return reply.type('text/html').send(content)
         }
 
-        if (prep.stats.size <= 4096) {
-            const start = 0
-            const end = Math.min(prep.stats.size, 4096) // Serve first 4KB for range requests
-            const chunkSize = (end - start) + 1
-            reply.code(206)
-            reply.header('Content-Length', chunkSize)
-            const chunk = await fs.promises.readFile(prep.realPath, { encoding: null, start, end })
-            return reply.type(getContentType(prep.realPath)).send(chunk)
+        const MAXCHUNK_SIZE = 16384
+        const fileSize = prep.stats.size
+        const chunkSize = Math.min(prep.stats.size, MAXCHUNK_SIZE)
+        const start = 0
+        const end = start + chunkSize - 1
+        if (fileSize <= MAXCHUNK_SIZE) {
+            console.log(`Small file`)
         } else {
-            const start = 0
-            const end = Math.min(prep.stats.size, 4096) // Serve first 4KB for range requests
-            const chunkSize = (end - start) + 1
+            console.log(`Large file, serving first 16KB`)
             reply.code(206)
-            reply.header('Content-Range', `bytes ${start}-${end}/${prep.stats.size}`)
+            reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`)
             reply.header('Accept-Ranges', 'bytes')
-            reply.header('Content-Length', chunkSize)
-            const chunk = await fs.promises.readFile(prep.realPath, { encoding: null, start, end })
-            return reply.type(getContentType(prep.realPath)).send(chunk)
         }
+        const stream = createReadStream(prep.realPath, { start, end })
+        stream.on('error', err => {
+            request.log.error(err)
+            if (!reply.sent) {
+                reply.code(500).send({ error: 'Stream error' })
+            }
+        })
+        reply.header('Content-Length', chunkSize)
+        return reply.type(getContentType(prep.realPath)).send(stream)
     } catch (err) {
         request.log.error(err)
         return reply.code(500).send({ error: 'Stream error' })
