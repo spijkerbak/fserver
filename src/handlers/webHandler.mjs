@@ -65,26 +65,18 @@ async function handleData(request, reply, prep, mimeType, content) {
     }
 }
 
-async function handleDirectory(request, reply, prep) {
-
-    if (prep.parts.length === 0 && !prep.requestUrl.pathname.endsWith('/')) {
-        return reply.redirect(buildRedirectTarget(`${prep.requestUrl.pathname}/`, prep.requestUrl.search))
-    }
-
-    let indexPath = path.join(prep.realPath, 'index.html')
-    if (await exists(indexPath)) {
+/**
+ * Handles execution of run.mjs module in the requested directory
+ * @param {*} request - The HTTP request object
+ * @param {*} reply - The HTTP reply object
+ * @param {*} prep - The prepared request data object
+ * @returns {Promise} The result of the run module execution or error response
+ */
+async function handleRuner(request, reply, prep) {
+    const runerPath = path.join(prep.realPath, 'run.mjs')
+    if (await exists(runerPath)) {
         try {
-            const content = await templateHandler.fillTemplate(indexPath, prep.webroot, {})
-            return reply.type('text/html').send(content)
-        } catch (err) {
-            request.log.error(err)
-            return reply.code(500).send({ error: 'Stream error' })
-        }
-    }
-    indexPath = path.join(prep.realPath, 'run.mjs')
-    if (await exists(indexPath)) {
-        try {
-            const module = await import(indexPath)
+            const module = await import(runerPath)
             if (typeof module.run === 'function') {
                 return await module.run(request, reply, prep, handleData)
             }
@@ -94,6 +86,32 @@ async function handleDirectory(request, reply, prep) {
             request.log.error(err)
             return reply.code(500).send({ error: 'Import error' })
         }
+    }
+}
+
+/**
+ * 
+ * @param {*} request 
+ * @param {*} reply 
+ * @param {*} prep 
+ * @returns 
+ */
+async function handleDirectory(request, reply, prep) {
+
+    if (prep.parts.length === 0 && !prep.requestUrl.pathname.endsWith('/')) {
+        return reply.redirect(buildRedirectTarget(`${prep.requestUrl.pathname}/`, prep.requestUrl.search))
+    }
+
+    let indexPath = path.join(prep.realPath, 'index.html')
+    if (await exists(indexPath)) {
+        prep.realPath = indexPath
+        prep.stats = await fs.promises.stat(prep.realPath)
+
+        return handleFile(request, reply, prep)
+    }
+    let runnerPath = path.join(prep.realPath, 'run.mjs')
+    if (await exists(runnerPath)) {
+        return handleRuner(request, reply, prep)
     }
 }
 
@@ -137,11 +155,12 @@ async function handleFile(request, reply, prep) {
     let parts = prep.realPath.split('?')
     if (parts.length > 1) {
         prep.realPath = parts[0]
+        prep.stats = await fs.promises.stat(prep.realPath)
+
         request.log.debug(`Stripped query parameters from realPath: ${prep.realPath}`)
         query = Object.fromEntries(new URLSearchParams(parts[1]))
         console.log(`CORRECTION: file request for ${prep.realPath}`)
         console.log(JSON.stringify(request, null, 2))
-
     }
 
     try {
@@ -150,17 +169,25 @@ async function handleFile(request, reply, prep) {
             return reply.type('text/html').send(content)
         }
 
-        const stream = createReadStream(prep.realPath)
-        stream.on('error', err => {
-            request.log.error(err)
-            if (!reply.sent) {
-                reply.code(500).send({ error: 'Stream error' })
-            }
-        })
-
-
-        return reply.type(getContentType(prep.realPath)).send(stream)
-
+        if (prep.stats.size <= 4096) {
+            const start = 0
+            const end = Math.min(prep.stats.size, 4096) // Serve first 4KB for range requests
+            const chunkSize = (end - start) + 1
+            reply.code(206)
+            reply.header('Content-Length', chunkSize)
+            const chunk = await fs.promises.readFile(prep.realPath, { encoding: null, start, end })
+            return reply.type(getContentType(prep.realPath)).send(chunk)
+        } else {
+            const start = 0
+            const end = Math.min(prep.stats.size, 4096) // Serve first 4KB for range requests
+            const chunkSize = (end - start) + 1
+            reply.code(206)
+            reply.header('Content-Range', `bytes ${start}-${end}/${prep.stats.size}`)
+            reply.header('Accept-Ranges', 'bytes')
+            reply.header('Content-Length', chunkSize)
+            const chunk = await fs.promises.readFile(prep.realPath, { encoding: null, start, end })
+            return reply.type(getContentType(prep.realPath)).send(chunk)
+        }
     } catch (err) {
         request.log.error(err)
         return reply.code(500).send({ error: 'Stream error' })
@@ -275,16 +302,9 @@ const run = (webroot) => async (request, reply) => {
             parts = decodedPath.split('/').filter(Boolean).slice(-3)
             pathExists = await exists(realPath)
         }
-        // console.log(`Resolved path for request "${request.url}":`, {
-        //     decodedPath,
-        //     realPath,
-        //     pathExists,
-        //     parts
-        // })
         if (!pathExists) {
             return reply.code(404).send({ error: `File not found (1) (${realPath})` })
         }
-        const stats = await fs.promises.stat(realPath)
 
         const prep = {
             hostname: hostname,
@@ -293,29 +313,26 @@ const run = (webroot) => async (request, reply) => {
             requestUrl: requestUrl,
             webroot: webroot,
             parts: parts,
+            stats: null
         }
+        prep.stats = await fs.promises.stat(realPath)
 
-
-        prep.stats = stats
-
-        reply.header('Accept-Ranges', 'bytes')
-
-        if (stats.isDirectory()) {
-            console.log(`Handling directory request for ${realPath} with parts:`, parts)
+        if (prep.stats.isDirectory()) {
+            console.log(`Handling directory request for ${prep.realPath} with parts:`, prep.parts)
             return await handleDirectory(request, reply, prep)
         }
-        if (!stats.isFile()) {
+        if (!prep.stats.isFile()) {
             return reply.code(404).send({ error: 'File not found (2)' })
         }
         if (!isAllowed(realPath)) {
             return reply.code(403).send({ error: 'Forbidden' })
         }
+        if (isImage(realPath)) {
+            return await handleImage(request, reply, prep)
+        }
         if (request.headers.range) {
             console.log(`RANGE REQUEST for ${realPath} with range: ${request.headers.range}`)
             return handleRange(request, reply, prep)
-        }
-        if (isImage(realPath)) {
-            return await handleImage(request, reply, prep)
         }
         return await handleFile(request, reply, prep)
 

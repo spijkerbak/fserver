@@ -1,0 +1,9 @@
+# Source - https://stackoverflow.com/a/10176685
+# Posted by Diego Woitasen, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-07-10, License - CC BY-SA 4.0
+
+# Interactive
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 365
+
+# Non-interactive and 10 years expiration
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes -subj "/C=XX/ST=Brabant/L=Waalwijk/O=Juggler/OU=B-Section/CN=localhost"
