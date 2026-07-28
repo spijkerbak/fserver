@@ -8,8 +8,6 @@ const fillTemplate = async (htmlPath, webroot, values) => {
     const includeRegex = /<!--\s*#include\s+virtual\s*=\s*["']([^"']+)["']\s*-->/g
     const variableRegex = /<!=\s*([^\s!]+)\s*!>/g
 
-    console.log(`Processing HTML: ${htmlPath} with ${JSON.stringify(values)}`) // --- IGNORE ---
-
     let match
     const includes = []
     const variables = []
@@ -19,9 +17,6 @@ const fillTemplate = async (htmlPath, webroot, values) => {
     while ((match = variableRegex.exec(content)) !== null) {
         variables.push(match[1])
     }
-
-    console.log(`Found ${includes.length} include(s) in ${htmlPath}:`, includes)
-    console.log(`Found ${variables.length} variable(s) in ${htmlPath}:`, variables)
 
     for (let variable of variables) {
         const value = values[variable] || ''

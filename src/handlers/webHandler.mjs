@@ -35,6 +35,10 @@ function isHtml(file) {
     return path.extname(file).toLowerCase() === '.html'
 }
 
+function isJson(file) {
+    return path.extname(file).toLowerCase() === '.json'
+}
+
 const getContentType = (filePath) => {
     const extension = path.extname(filePath).toLowerCase()
     const type = mime.lookup(extension) || 'application/octet-stream'
@@ -48,44 +52,35 @@ const buildRedirectTarget = (pathname, search = '') => {
     return `${pathname}${search}`
 }
 
-async function handleData(request, reply, prep, mimeType, content) {
+async function handleData(request, reply, prep, contentType, content) {
     if (content) {
-        return reply.type(mimeType).send(content)
+        return reply.type(contentType).send(content)
     } else {
-        if (mimeType === 'text/html') {
+        if (contentType === 'text/html') {
             return handleFile(request, reply, prep)
         }
-        if (mimeType.startsWith('image/')) {
+        if (contentType.startsWith('image/')) {
             return await handleImage(request, reply, prep)
         }
-        if (mimeType.startsWith('video/')) {
+        if (contentType.startsWith('video/')) {
             return await handleFile(request, reply, prep)
         }
-        return reply.type('text/plain').send('No content available for mimetype: ' + mimeType)
+        return reply.type('text/plain').send('No content available for content-type: ' + contentType)
     }
 }
 
-/**
- * Handles execution of run.mjs module in the requested directory
- * @param {*} request - The HTTP request object
- * @param {*} reply - The HTTP reply object
- * @param {*} prep - The prepared request data object
- * @returns {Promise} The result of the run module execution or error response
- */
-async function handleRuner(request, reply, prep) {
-    const runerPath = path.join(prep.realPath, 'run.mjs')
-    if (await exists(runerPath)) {
-        try {
-            const module = await import(runerPath)
-            if (typeof module.run === 'function') {
-                return await module.run(request, reply, prep, handleData)
-            }
-            return reply.code(403).send({ error: 'Forbidden' })
+async function handleRunner(request, reply, prep) {
+    const runnerPath = prep.realPath
+    try {
+        const module = await import(runnerPath)
+        if (typeof module.run === 'function') {
+            return await module.run(request, reply, prep, handleData)
         }
-        catch (err) {
-            request.log.error(err)
-            return reply.code(500).send({ error: 'Import error' })
-        }
+        return reply.code(403).send({ error: 'Forbidden' })
+    }
+    catch (err) {
+        request.log.error(err)
+        return reply.code(500).send({ error: 'Import error' })
     }
 }
 
@@ -94,22 +89,22 @@ async function handleRuner(request, reply, prep) {
  * @param {*} request 
  * @param {*} reply 
  * @param {*} prep 
- * @returns 
+ * @returns {Promise} The result of the directory handling or error response
  */
 async function handleDirectory(request, reply, prep) {
 
-    if (prep.parts.length === 0 && !prep.requestUrl.pathname.endsWith('/')) {
+    if (prep.tail.length === 0 && !prep.requestUrl.pathname.endsWith('/')) {
         return reply.redirect(buildRedirectTarget(`${prep.requestUrl.pathname}/`, prep.requestUrl.search))
     }
 
     let indexPath = path.join(prep.realPath, 'index.html')
     if (await exists(indexPath)) {
-        prep.setRealPath(indexPath)
+        prep.setRealPath(indexPath, 1)
         return await handleFile(request, reply, prep)
     }
     let runnerPath = path.join(prep.realPath, 'run.mjs')
     if (await exists(runnerPath)) {
-        return await handleRuner(request, reply, prep)
+        return await handleRunner(request, reply, prep)
     }
 }
 
@@ -117,14 +112,14 @@ async function handleRange(request, reply, prep) {
     const range = request.headers.range
     const [startStr, endStr] = range.replace(/bytes=/, '').split('-')
     const start = parseInt(startStr, 10)
-    const end = endStr ? parseInt(endStr, 10) : prep.stats.size - 1
+    const end = endStr ? parseInt(endStr, 10) : prep.filesize - 1
 
-    if (isNaN(start) || isNaN(end) || start < 0 || end >= prep.stats.size || start > end) {
+    if (isNaN(start) || isNaN(end) || start < 0 || end >= prep.filesize || start > end) {
         return reply.code(416).send({ error: 'Invalid Range header' })
     }
 
-    const startpct = ((start / prep.stats.size) * 100).toFixed(2)
-    const endpct = ((end / prep.stats.size) * 100).toFixed(2)
+    const startpct = ((start / prep.filesize) * 100).toFixed(2)
+    const endpct = ((end / prep.filesize) * 100).toFixed(2)
     request.log.debug(`Range from ${startpct}% to ${endpct}% for ${prep.realPath}`)
 
     const chunkSize = (end - start) + 1
@@ -138,43 +133,44 @@ async function handleRange(request, reply, prep) {
     })
 
     reply.code(206)
-    reply.header('Content-Range', `bytes ${start}-${end}/${prep.stats.size}`)
+    reply.header('Content-Range', `bytes ${start}-${end}/${prep.filesize}`)
     reply.header('Accept-Ranges', 'bytes')
     reply.header('Content-Length', chunkSize)
-    return reply.type(getContentType(prep.realPath)).send(stream)
+    return reply.type(prep.contentType).send(stream)
 }
 
 async function handleFile(request, reply, prep) {
 
-    console.log(`Handling file request for ${prep.realPath} (${prep.stats.size} bytes)`)
     // in some cases, realPath may still contain query parameters
     // so parse them and remove them from the realPath if necessary
     let query = {}
     let parts = prep.realPath.split('?')
     if (parts.length > 1) {
-        prep.setRealPath(parts[0])
-
-        console.log(`Stripped query parameters from realPath: ${prep.realPath}`)
+        prep.setRealPath(parts[0], 2)
         query = Object.fromEntries(new URLSearchParams(parts[1]))
-        console.log(`CORRECTION: file request for ${prep.realPath}`)
-        console.log(JSON.stringify(request, null, 2))
     }
 
     try {
-        if (isHtml(prep.realPath)) {
+        console.log(`contentType: ${prep.contentType}, filesize: ${prep.filesize}, realPath: ${prep.realPath}`)
+        if (prep.contentType == 'text/html') {
             const content = await templateHandler.fillTemplate(prep.realPath, prep.webroot, query)
-            return reply.type('text/html').send(content)
+            return reply.type(prep.contentType).send(content)
+        }
+        if (prep.contentType.startsWith('text/') || prep.contentType.startsWith('application/')) {
+            const content = await fs.promises.readFile(prep.realPath, 'utf-8')
+            return reply.type(prep.contentType).send(content)
         }
 
         const MAXCHUNK_SIZE = 16384
-        const fileSize = prep.stats.size
-        const chunkSize = Math.min(prep.stats.size, MAXCHUNK_SIZE)
+        const fileSize = prep.filesize
+        const chunkSize = Math.min(prep.filesize, MAXCHUNK_SIZE)
         const start = 0
         const end = start + chunkSize - 1
         if (fileSize <= MAXCHUNK_SIZE) {
             console.log(`Small file`)
         } else {
-            console.log(`Large file, serving first chunk of ${chunkSize} bytes (0-${end}) of total ${fileSize} bytes`)
+            console.log(`Path: ${prep.realPath}`)
+            console.log(`Large file, serving first ${chunkSize} bytes (0-${end}) of ${fileSize} bytes`)
             reply.code(206)
             reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`)
             reply.header('Accept-Ranges', 'bytes')
@@ -187,7 +183,7 @@ async function handleFile(request, reply, prep) {
             }
         })
         reply.header('Content-Length', chunkSize)
-        return reply.type(getContentType(prep.realPath)).send(stream)
+        return reply.type(prep.contentType).send(stream)
     } catch (err) {
         request.log.error(err)
         return reply.code(500).send({ error: 'Stream error' })
@@ -241,8 +237,7 @@ async function handleImage(request, reply, prep) {
             }
         })
 
-        const contentType = getContentType(prep.realPath)
-        reply.header('Content-Type', contentType)
+        reply.header('Content-Type', prep.contentType)
         return reply.send(stream)
     } catch (err) {
         request.log.error(err)
@@ -256,97 +251,152 @@ function exists(path) {
         .catch(() => false)
 }
 
-const run = (webroot) => async (request, reply) => {
+function getStats(realPath) {
+    return fs.statSync(realPath, { throwIfNoEntry: false }) || null
+}
 
-    const wildcardPath = request.params['*'] ?? ''
+function makePrep(webroot, request) {
     const hostname = request.headers.host || request.headers[':authority'] || 'localhost'
-    const requestUrl = new URL(request.url, `https://${hostname}`)
+    const requestPath = request.params['*'] ?? ''
+    const realPath = pathFinder.getRealPath(webroot, requestPath)
+    // const stats = getStats(realPath)
 
-    let decodedPath
-
-    try {
-        decodedPath = decodeURIComponent(wildcardPath)
-    } catch {
-        return reply.code(400).send({ error: 'Invalid path' })
-    }
-
-    if (decodedPath.endsWith('/index.html') || decodedPath === 'index.html') {
-        const redirectPath = decodedPath === 'index.html'
-            ? '/'
-            : `/${decodedPath.slice(0, -'index.html'.length)}`
-
-        return reply.redirect(buildRedirectTarget(redirectPath, requestUrl.search))
-    }
-
-    let realPath = pathFinder.getRealPath(webroot, decodedPath)
-
-    if (!realPath) {
-        return reply.code(404).send({ error: 'File not found (0)' })
-    }
-
-    try {
-        let pathExists = await exists(realPath)
-        let parts = []
-        if (!pathExists) {
-            realPath = pathFinder.getRealPath(webroot, `${decodedPath}/../`)
-            parts = decodedPath.split('/').filter(Boolean).slice(-1)
-            pathExists = await exists(realPath)
-        }
-        if (!pathExists) {
-            realPath = pathFinder.getRealPath(webroot, `${decodedPath}/../../`)
-            parts = decodedPath.split('/').filter(Boolean).slice(-2)
-            pathExists = await exists(realPath)
-        }
-        if (!pathExists) {
-            realPath = pathFinder.getRealPath(webroot, `${decodedPath}/../../../`)
-            parts = decodedPath.split('/').filter(Boolean).slice(-3)
-            pathExists = await exists(realPath)
-        }
-        if (!pathExists) {
-            return reply.code(404).send({ error: `File not found (1) (${realPath})` })
-        }
-
-        const prep = {
-            hostname: hostname,
-            decodedPath: decodedPath,
-            requestUrl: requestUrl,
-            webroot: webroot,
-            parts: parts,
-            realPath: null,
-            stats: null,
-            setRealPath: async function (newPath) {
-                this.realPath = newPath
-                this.stats = await fs.promises.stat(this.realPath)
+    let prep = {
+        hostname: hostname,
+        webroot: webroot,
+        requestPath: requestPath,
+        query: request.query ?? {},
+        webroot: webroot,
+        realPath: null,
+        filesize: 0,
+        type: 'UNKNOWN',
+        contentType: '',
+        tail: [],
+        message: '200 OK',
+        setRealPath: function (newPath, pos = 222) {
+            this.realPath = newPath
+            const stats = getStats(this.realPath)
+            if (stats) {
+                this.type = stats.isFile() ? 'FILE' : stats.isDirectory() ? 'DIRECTORY' : 'OTHER'
+                if (this.type === 'FILE') {
+                    this.filesize = stats.size
+                    this.contentType = getContentType(this.realPath)
+                }
+            } else {
+                this.type = 'NOTFOUND'
+                this.filesize = 0
             }
+            console.log(`Prep updated:
+                pos=${pos},
+                realPath=${this.realPath}, 
+                type=${this.type}, 
+                contentType=${this.contentType},
+                filesize=${this.filesize}, 
+                tail=${this.tail.join(' / ')},
+                query=${JSON.stringify(this.query)},
+                message=${this.message}
+            `
+            )
+        },
+        setRealPathFile: function (filename, pos = 333) {
+            let directory = this.type == 'DIRECTORY' ? this.realPath : path.dirname(this.realPath)
+            this.setRealPath(path.join(directory, filename), pos + 100)
         }
-        await prep.setRealPath(realPath)
-
-        if (prep.stats.isDirectory()) {
-            console.log(`Handling directory request for ${prep.realPath} with parts:`, prep.parts)
-            return await handleDirectory(request, reply, prep)
-        }
-        if (!prep.stats.isFile()) {
-            return reply.code(404).send({ error: 'File not found (2)' })
-        }
-        if (!isAllowed(realPath)) {
-            return reply.code(403).send({ error: 'Forbidden' })
-        }
-        if (isImage(realPath)) {
-            return await handleImage(request, reply, prep)
-        }
-        if (request.headers.range) {
-            console.log(`RANGE REQUEST for ${realPath} with range: ${request.headers.range}`)
-            return handleRange(request, reply, prep)
-        }
-        return await handleFile(request, reply, prep)
-
-    } catch (err) {
-        if (err.code === 'ENOENT') {
-            console.log(`File not found: ${realPath}`)
-            return reply.code(404).send({ error: `File not found (3) (${realPath})` })
-        }
-        return reply.code(500).send({ error: 'Internal Server Error (1)' })
     }
+    prep.setRealPath(realPath, 5)
+    return prep
+}
+
+function dumpPrep(request, reply, prep) {
+    return reply.code(200).header('Content-Type', 'text/html').send(`<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Request</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #ddd; padding: 8px; }
+            th { background-color: #f2f2f2; text-align: left; }
+        </style>
+    </head>
+    <body>
+        <h1>Request</h1>
+        <table border="1">
+            <tr><td>Hostname</td><td>${prep.hostname}</td></tr> 
+            <tr><td>Webroot</td><td>${prep.webroot}</td></tr>
+            <tr><td>Request Path</td><td>${prep.requestPath}</td></tr>
+            <tr><td>Query</td><td>${JSON.stringify(prep.query)}</td></tr>
+            <tr><td>Real Path</td><td>${prep.realPath}</td></tr>
+            <tr><td>Type</td><td>${prep.type}</td></tr>
+            <tr><td>Filesize</td><td>${prep.filesize}</td></tr>
+            <tr><td>Content Type</td><td>${prep.contentType}</td></tr>
+            <tr><td>Tail</td><td>${prep.tail.join(' / ')}</td></tr>
+            <tr><td>Message</td><td>${prep.message}</td></tr>
+        </table>
+    </body>
+</html>`)
+}
+
+
+const run = (webroot) => async (request, reply) => {
+    const hostname = request.headers.host || request.headers[':authority'] || 'localhost'
+    const requestPath = request.params['*'] ?? ''
+
+    let prep = makePrep(webroot, request)
+
+    const dump = false // set to true to dump prep for debugging
+
+    while (prep.type == 'NOTFOUND') {
+        prep.tail.unshift(path.basename(prep.realPath))
+        prep.setRealPath(path.dirname(prep.realPath), 6)
+    }
+
+    if (prep.type === 'OTHER') {
+        prep.message = '404 Not a valid file or directory'
+        if (dump) return dumpPrep(request, reply, prep)
+        return reply.code(404).send({ error: 'Not found' })
+    }
+
+    if (prep.type === 'DIRECTORY') {
+        prep.setRealPathFile('index.html', 7)
+        if (prep.type === 'FILE') {
+            if (prep.tail.length > 0) {
+                prep.message = '404 index.html with tail not allowed'
+                if (dump) return dumpPrep(request, reply, prep)
+                return reply.code(404).send({ error: 'Not found!' })
+            }
+            if (dump) return dumpPrep(request, reply, prep)
+            return await handleFile(request, reply, prep)
+        } else {
+            prep.setRealPathFile('run.mjs', 8)
+            if (prep.type !== 'FILE') {
+                prep.message = '404 Not found'
+                if (dump) return dumpPrep(request, reply, prep)
+                return reply.code(404).send({ error: 'Not found' })
+            }
+            if (dump) return dumpPrep(request, reply, prep)
+            return handleRunner(request, reply, prep)
+        }
+        prep.message = '404 Directory not allowed'
+        if (dump) return dumpPrep(request, reply, prep)
+        return reply.code(404).send({ error: 'Not found' })
+    }
+
+    if (prep.type === 'FILE') {
+        if (prep.tail.length > 0) {
+            prep.message = '404 file with tail not allowed'
+            if (dump) return dumpPrep(request, reply, prep)
+            return reply.code(404).send({ error: 'Not found!' })
+        }
+
+        if (dump) return dumpPrep(request, reply, prep)
+        return await handleFile(request, reply, prep)
+    }
+    prep.message = '500 Internal Server Error'
+    if (dump) return dumpPrep(request, reply, prep)
+    return await handleFile(request, reply, prep)
+
 }
 
 const webHandler = { run }

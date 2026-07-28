@@ -73,8 +73,8 @@ const createServer = async (config) => {
 
     // Web routes
     for (const [routePrefix, webRoot] of Object.entries(config.web_roots)) {
-        const prefix = routePrefix.endsWith('/') ? routePrefix : routePrefix + '/'
-        server.get(`${prefix}*`, webHandler.run(webRoot))
+        console.log(`Registering route: ${routePrefix} -> ${webRoot}`)
+        server.get(`${routePrefix}`, webHandler.run(webRoot))
     }
 
     // Start listening for requests
