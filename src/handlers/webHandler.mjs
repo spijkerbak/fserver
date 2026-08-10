@@ -7,49 +7,42 @@ import { pathFinder } from './pathFinder.mjs'
 import { templateHandler } from './templateHandler.mjs'
 
 // ---- White list of allowed file types (security!) ----
-const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.svg', '.gif', '.tiff', '.bmp', '.webp']
-const VIDEO_EXT = ['.mp4', '.webm', '.ogg', '.mkv', '.avi', '.mov', '.m4v']
-const AUDIO_EXT = ['.mp3', '.wav', '.ogg']
-const DOC_EXT = ['.pdf', '.docx', '.xlsx', '.pptx']
-const WEB_EXT = ['.html', '.css', '.js']
-const SSI_EXT = ['.html', '.part', '.inc', '.txt', '.phtml'] // for server side includes
-const ALLOWED_EXT = [...WEB_EXT, ...DOC_EXT, ...IMAGE_EXT, ...VIDEO_EXT, ...AUDIO_EXT, ...SSI_EXT]
+// const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.svg', '.gif', '.tiff', '.bmp', '.webp']
+// const VIDEO_EXT = ['.mp4', '.webm', '.ogg', '.mkv', '.avi', '.mov', '.m4v']
+// const AUDIO_EXT = ['.mp3', '.wav', '.ogg']
+// const DOC_EXT = ['.pdf', '.docx', '.xlsx', '.pptx']
+// const WEB_EXT = ['.html', '.css', '.js']
+// const SSI_EXT = ['.html', '.part', '.inc', '.txt', '.phtml'] // for server side includes
+// const ALLOWED_EXT = [...WEB_EXT, ...DOC_EXT, ...IMAGE_EXT, ...VIDEO_EXT, ...AUDIO_EXT, ...SSI_EXT]
 
-function isAllowed(file) {
-    return ALLOWED_EXT.includes(path.extname(file).toLowerCase())
-}
+// function isAllowed(file) {
+//     return ALLOWED_EXT.includes(path.extname(file).toLowerCase())
+// }
 
-function isImage(file) {
-    return IMAGE_EXT.includes(path.extname(file).toLowerCase())
-}
+// function isImage(file) {
+//     return IMAGE_EXT.includes(path.extname(file).toLowerCase())
+// }
 
-function isAudio(file) {
-    return AUDIO_EXT.includes(path.extname(file).toLowerCase())
-}
+// function isAudio(file) {
+//     return AUDIO_EXT.includes(path.extname(file).toLowerCase())
+// }
 
-function isVideo(file) {
-    return VIDEO_EXT.includes(path.extname(file).toLowerCase())
-}
+// function isVideo(file) {
+//     return VIDEO_EXT.includes(path.extname(file).toLowerCase())
+// }
 
-function isHtml(file) {
-    return path.extname(file).toLowerCase() === '.html'
-}
+// function isHtml(file) {
+//     return path.extname(file).toLowerCase() === '.html'
+// }
 
-function isJson(file) {
-    return path.extname(file).toLowerCase() === '.json'
-}
+// function isJson(file) {
+//     return path.extname(file).toLowerCase() === '.json'
+// }
 
 const getContentType = (filePath) => {
     const extension = path.extname(filePath).toLowerCase()
     const type = mime.lookup(extension) || 'application/octet-stream'
     return type
-}
-
-const buildRedirectTarget = (pathname, search = '') => {
-    if (!pathname || pathname === '/') {
-        return `/${search}`
-    }
-    return `${pathname}${search}`
 }
 
 async function handleData(request, reply, prep, contentType, content) {
@@ -84,30 +77,6 @@ async function handleRunner(request, reply, prep) {
     }
 }
 
-/**
- * 
- * @param {*} request 
- * @param {*} reply 
- * @param {*} prep 
- * @returns {Promise} The result of the directory handling or error response
- */
-async function handleDirectory(request, reply, prep) {
-
-    if (prep.tail.length === 0 && !prep.requestUrl.pathname.endsWith('/')) {
-        return reply.redirect(buildRedirectTarget(`${prep.requestUrl.pathname}/`, prep.requestUrl.search))
-    }
-
-    let indexPath = path.join(prep.realPath, 'index.html')
-    if (await exists(indexPath)) {
-        prep.setRealPath(indexPath, 1)
-        return await handleFile(request, reply, prep)
-    }
-    let runnerPath = path.join(prep.realPath, 'run.mjs')
-    if (await exists(runnerPath)) {
-        return await handleRunner(request, reply, prep)
-    }
-}
-
 async function handleFile(request, reply, prep) {
 
     // in some cases, realPath may still contain query parameters
@@ -124,32 +93,22 @@ async function handleFile(request, reply, prep) {
     const start = startStr ? parseInt(startStr, 10) : 0
     const end = endStr ? parseInt(endStr, 10) : prep.filesize - 1
 
-
     try {
-        console.log(`contentType: ${prep.contentType}, filesize: ${prep.filesize}, realPath: ${prep.realPath}`)
         if (prep.contentType == 'text/html') {
             const content = await templateHandler.fillTemplate(prep.realPath, prep.webroot, query)
             return reply.type(prep.contentType).send(content)
         }
-        // if (prep.contentType.startsWith('text/') || prep.contentType.startsWith('application/')) {
-        //     const content = await fs.promises.readFile(prep.realPath, 'utf-8')
-        //     return reply.type(prep.contentType).send(content)
-        // }
-
         const fileSize = prep.filesize
-        const chunkSize = fileSize - start
-        console.log(`Path: ${prep.realPath}`)
-        reply.code(206)
-        reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`)
+        const streamLength = fileSize - start
+        if (start == 0) {
+            reply.code(200)
+        } else {
+            reply.code(206)
+            reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`)
+        }
         reply.header('Accept-Ranges', 'bytes')
+        reply.header('Content-Length', streamLength)
         const stream = createReadStream(prep.realPath, { start, end })
-        stream.on('error', err => {
-            request.log.error(err)
-            if (!reply.sent) {
-                reply.code(500).send({ error: 'Stream error' })
-            }
-        })
-        reply.header('Content-Length', chunkSize)
         return reply.type(prep.contentType).send(stream)
     } catch (err) {
         request.log.error(err)
@@ -210,12 +169,6 @@ async function handleImage(request, reply, prep) {
         request.log.error(err)
         return reply.code(500).send({ error: 'Image processing error' })
     }
-}
-
-function exists(path) {
-    return fs.promises.access(path, fs.constants.F_OK)
-        .then(() => true)
-        .catch(() => false)
 }
 
 function getStats(realPath) {
