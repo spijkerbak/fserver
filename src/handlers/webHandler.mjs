@@ -119,10 +119,10 @@ async function handleFile(request, reply, prep) {
         query = Object.fromEntries(new URLSearchParams(parts[1]))
     }
 
-    const new_range = request.headers.range || ''
-    const [startStr, endStr] = new_range.replace(/bytes=/, '').split('-')
-    const new_start = startStr ? parseInt(startStr, 10) : 0
-    const new_end = endStr ? parseInt(endStr, 10) : prep.filesize - 1
+    const range = request.headers.range || ''
+    const [startStr, endStr] = range.replace(/bytes=/, '').split('-')
+    const start = startStr ? parseInt(startStr, 10) : 0
+    const end = endStr ? parseInt(endStr, 10) : prep.filesize - 1
 
 
     try {
@@ -131,14 +131,12 @@ async function handleFile(request, reply, prep) {
             const content = await templateHandler.fillTemplate(prep.realPath, prep.webroot, query)
             return reply.type(prep.contentType).send(content)
         }
-        if (prep.contentType.startsWith('text/') || prep.contentType.startsWith('application/')) {
-            const content = await fs.promises.readFile(prep.realPath, 'utf-8')
-            return reply.type(prep.contentType).send(content)
-        }
+        // if (prep.contentType.startsWith('text/') || prep.contentType.startsWith('application/')) {
+        //     const content = await fs.promises.readFile(prep.realPath, 'utf-8')
+        //     return reply.type(prep.contentType).send(content)
+        // }
 
         const fileSize = prep.filesize
-        const start = new_start
-        const end = new_end
         const chunkSize = fileSize - start
         console.log(`Path: ${prep.realPath}`)
         reply.code(206)
