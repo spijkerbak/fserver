@@ -76,11 +76,11 @@ async function handleRunner(request, reply, prep) {
         if (typeof module.run === 'function') {
             return await module.run(request, reply, prep, handleData)
         }
-        return reply.code(403).send({ error: 'Forbidden' })
+        return reply.code(403).send({ error: 'Forbidden (79)' })
     }
     catch (err) {
         request.log.error(err)
-        return reply.code(500).send({ error: 'Import error' })
+        return reply.code(500).send({ error: 'Error running api (83)', message: err.message })
     }
 }
 
@@ -108,37 +108,6 @@ async function handleDirectory(request, reply, prep) {
     }
 }
 
-async function handleRange(request, reply, prep) {
-    const range = request.headers.range
-    const [startStr, endStr] = range.replace(/bytes=/, '').split('-')
-    const start = parseInt(startStr, 10)
-    const end = endStr ? parseInt(endStr, 10) : prep.filesize - 1
-
-    if (isNaN(start) || isNaN(end) || start < 0 || end >= prep.filesize || start > end) {
-        return reply.code(416).send({ error: 'Invalid Range header' })
-    }
-
-    const startpct = ((start / prep.filesize) * 100).toFixed(2)
-    const endpct = ((end / prep.filesize) * 100).toFixed(2)
-    request.log.debug(`Range from ${startpct}% to ${endpct}% for ${prep.realPath}`)
-
-    const chunkSize = (end - start) + 1
-    const stream = createReadStream(prep.realPath, { start, end })
-
-    stream.on('error', err => {
-        request.log.error(err)
-        if (!reply.sent) {
-            reply.code(500).send({ error: 'Stream error' })
-        }
-    })
-
-    reply.code(206)
-    reply.header('Content-Range', `bytes ${start}-${end}/${prep.filesize}`)
-    reply.header('Accept-Ranges', 'bytes')
-    reply.header('Content-Length', chunkSize)
-    return reply.type(prep.contentType).send(stream)
-}
-
 async function handleFile(request, reply, prep) {
 
     // in some cases, realPath may still contain query parameters
@@ -149,6 +118,12 @@ async function handleFile(request, reply, prep) {
         prep.setRealPath(parts[0], 2)
         query = Object.fromEntries(new URLSearchParams(parts[1]))
     }
+
+    const new_range = request.headers.range || ''
+    const [startStr, endStr] = new_range.replace(/bytes=/, '').split('-')
+    const new_start = startStr ? parseInt(startStr, 10) : 0
+    const new_end = endStr ? parseInt(endStr, 10) : prep.filesize - 1
+
 
     try {
         console.log(`contentType: ${prep.contentType}, filesize: ${prep.filesize}, realPath: ${prep.realPath}`)
@@ -161,20 +136,14 @@ async function handleFile(request, reply, prep) {
             return reply.type(prep.contentType).send(content)
         }
 
-        const MAXCHUNK_SIZE = 16384
         const fileSize = prep.filesize
-        const chunkSize = Math.min(prep.filesize, MAXCHUNK_SIZE)
-        const start = 0
-        const end = start + chunkSize - 1
-        if (fileSize <= MAXCHUNK_SIZE) {
-            console.log(`Small file`)
-        } else {
-            console.log(`Path: ${prep.realPath}`)
-            console.log(`Large file, serving first ${chunkSize} bytes (0-${end}) of ${fileSize} bytes`)
-            reply.code(206)
-            reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`)
-            reply.header('Accept-Ranges', 'bytes')
-        }
+        const start = new_start
+        const end = new_end
+        const chunkSize = fileSize - start
+        console.log(`Path: ${prep.realPath}`)
+        reply.code(206)
+        reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`)
+        reply.header('Accept-Ranges', 'bytes')
         const stream = createReadStream(prep.realPath, { start, end })
         stream.on('error', err => {
             request.log.error(err)
@@ -286,17 +255,6 @@ function makePrep(webroot, request) {
                 this.type = 'NOTFOUND'
                 this.filesize = 0
             }
-            console.log(`Prep updated:
-                pos=${pos},
-                realPath=${this.realPath}, 
-                type=${this.type}, 
-                contentType=${this.contentType},
-                filesize=${this.filesize}, 
-                tail=${this.tail.join(' / ')},
-                query=${JSON.stringify(this.query)},
-                message=${this.message}
-            `
-            )
         },
         setRealPathFile: function (filename, pos = 333) {
             let directory = this.type == 'DIRECTORY' ? this.realPath : path.dirname(this.realPath)
