@@ -71,10 +71,25 @@ const createServer = async (config) => {
     server.register(cors, { origin: config.origin })
     server.register(import('@fastify/compress'))
 
-    // Web routes
-    for (const [routePrefix, webRoot] of Object.entries(config.web_roots)) {
-        console.log(`Registering route: ${routePrefix} -> ${webRoot}`)
-        server.get(`${routePrefix}`, webHandler.run(webRoot))
+    // GET routes
+
+    for (const [routePrefix, def] of Object.entries(config.roots || {})) {
+        const { path, methods } = def
+        for (const method of methods) {
+            console.log(`Registering route: ${method} ${routePrefix} -> ${path}`)
+            if (method === 'GET') {
+                server.get(`${routePrefix}`, webHandler.run(path))
+            }
+            if (method === 'POST') {
+                server.post(`${routePrefix}`, webHandler.run(path))
+            }
+            if (method === 'PUT') {
+                server.put(`${routePrefix}`, webHandler.run(path))
+            }
+            if (method === 'DELETE') {
+                server.delete(`${routePrefix}`, webHandler.run(path))
+            }
+        }
     }
 
     // Start listening for requests

@@ -176,6 +176,7 @@ function getStats(realPath) {
 }
 
 function makePrep(webroot, request) {
+
     const hostname = request.headers.host || request.headers[':authority'] || 'localhost'
     const requestPath = request.params['*'] ?? ''
     const realPath = pathFinder.getRealPath(webroot, requestPath)

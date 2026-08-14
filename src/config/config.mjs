@@ -4,16 +4,26 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const default_config = 
+const default_config =
 {
     "origin": [
         "http://localhost"
     ],
     "host": "0.0.0.0",
     "port": 3000,
-    "web_roots": {
-        "/": "public/web",
-        "/media": "/mnt/media"
+    "roots": {
+        "/": {
+            "path": "public/web",
+            "methods": [
+                "GET"
+            ]
+        },
+        "/media": {
+            "path": "/mnt/media",
+            "methods": [
+                "GET"
+            ]
+        }
     },
     "ssl": {
         "key": "ssl/key.pem",
@@ -21,7 +31,7 @@ const default_config =
     }
 }
 
-const configPath = path.join(__dirname, '../../' , 'config.json')
+const configPath = path.join(__dirname, '../../', 'config.json')
 
 export function loadConfig() {
     let config = {}

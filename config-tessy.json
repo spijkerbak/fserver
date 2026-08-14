@@ -5,14 +5,35 @@
     ],
     "host": "0.0.0.0",
     "port": 443,
-    "web_roots": {
-        "/tile": "/home/tester/Pictures/tiles",
-        "/script": "/home/tester/Documents/webroot/tessy/script",
-        "/top": "/home/tester/Pictures/erowall/top",
-        "/": "/home/tester/Documents/webroot/tessy/web"
-    },
-    "ssl": {
-        "key": "/home/tester/.ssl/key.pem",
-        "cert": "/home/tester/.ssl/cert.pem"
+    "roots": {
+        "/tile": {
+            "path": "/home/tester/Pictures/tiles",
+            "methods": [
+                "GET"
+            ]
+        },
+        "/script": {
+            "path": "/home/tester/Documents/webroot/tessy/script",
+            "methods": [
+                "GET"
+            ]
+        },
+        "/top": {
+            "path": "/home/tester/Pictures/erowall/top",
+            "methods": [
+                "GET"
+            ]
+        },
+        "/": {
+            "path": "/home/tester/Documents/webroot/tessy/web",
+            "methods": [
+                "GET"
+            ]
+        }
     }
+},
+"ssl": {
+    "key": "/home/tester/.ssl/key.pem",
+    "cert": "/home/tester/.ssl/cert.pem"
+}
 }

@@ -5,9 +5,19 @@
     ],
     "host": "0.0.0.0",
     "port": 443,
-    "web_roots": {
-        "/": "./public/web",
-        "/video": "./public/video"
+    "roots": {
+        "/": {
+            "path": "./public/web",
+            "methods": [
+                "GET"
+            ]
+        },
+        "/video": {
+            "path": "./public/video",
+            "methods": [
+                "GET"
+            ]
+        }
     },
     "ssl": {
         "key": "./ssl-localhost/localhost.key",
