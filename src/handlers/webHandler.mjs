@@ -118,11 +118,11 @@ async function handleFile(request, reply, prep) {
 
 async function handleImage(request, reply, prep) {
 
-    let msg = `Handling image request for ${prep.realPath}`
-    if (request.query) {
-        msg += ` with query: ${JSON.stringify(request.query)}`
-    }
-    console.log(msg)
+    // let msg = `Handling image request for ${prep.realPath}`
+    // if (request.query) {
+    //     msg += ` with query: ${JSON.stringify(request.query)}`
+    // }
+    // console.log(msg)
 
     const sizes = [100, 200, 400, 800, 1200, 1600, 2000, 3000, 4000]
     const requestedWidth = parseInt(request.query.width, 10) || parseInt(request.query.height, 10)
