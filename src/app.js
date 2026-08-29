@@ -71,8 +71,8 @@ const createServer = async (config) => {
     server.register(cors, { origin: config.origin })
     server.register(import('@fastify/compress'))
 
-    // GET routes
 
+    // GET routes
     for (const [routePrefix, def] of Object.entries(config.roots || {})) {
         const { path, methods } = def
         for (const method of methods) {
@@ -89,6 +89,14 @@ const createServer = async (config) => {
             if (method === 'DELETE') {
                 server.delete(`${routePrefix}`, webHandler.run(path))
             }
+        }
+    }
+
+    // Run initialization
+    if (config.init) {
+        const initModule = await import(config.init)
+        if (typeof initModule.default === 'function') {
+            await initModule.default(server, config)
         }
     }
 
