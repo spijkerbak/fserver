@@ -5,35 +5,35 @@
     ],
     "host": "0.0.0.0",
     "port": 443,
+    "init": "/home/tester/Documents/webroot/tessy/init.mjs",
     "roots": {
-        "/tile": {
-            "path": "/home/tester/Pictures/tiles",
-            "methods": [
-                "GET"
-            ]
-        },
-        "/script": {
+        "/script/*": {
             "path": "/home/tester/Documents/webroot/tessy/script",
             "methods": [
                 "GET"
             ]
         },
-        "/top": {
-            "path": "/home/tester/Pictures/erowall/top",
+        "/api": {
+            "path": "/home/tester/Documents/webroot/tessy/api",
             "methods": [
-                "GET"
+                "GET", "PUT", "POST", "DELETE"
             ]
         },
-        "/": {
+        "/api/*": {
+            "path": "/home/tester/Documents/webroot/tessy/api",
+            "methods": [
+                "GET", "PUT", "POST", "DELETE"
+            ]
+        },
+        "/*": {
             "path": "/home/tester/Documents/webroot/tessy/web",
             "methods": [
                 "GET"
             ]
         }
+    },
+    "ssl": {
+        "key": "/home/tester/.ssl/key.pem",
+        "cert": "/home/tester/.ssl/cert.pem"
     }
-},
-"ssl": {
-    "key": "/home/tester/.ssl/key.pem",
-    "cert": "/home/tester/.ssl/cert.pem"
-}
 }

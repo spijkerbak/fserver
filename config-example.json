@@ -1,26 +1,40 @@
 {
     "origin": [
         "http://localhost",
-        "https://mysite.local"
+        "https://happy.local",
+        "https://happy"
     ],
     "host": "0.0.0.0",
     "port": 443,
+    "init": "/home/tester/Documents/webroot/happy/init.mjs",
     "roots": {
-        "/": {
-            "path": "./public/web",
+        "/script/*": {
+            "path": "/home/tester/Documents/webroot/happy/script",
             "methods": [
                 "GET"
             ]
         },
-        "/video": {
-            "path": "./public/video",
+        "/api": {
+            "path": "/home/tester/Documents/webroot/happy/api",
+            "methods": [
+                "GET", "PUT", "POST", "DELETE"
+            ]
+        },
+        "/api/*": {
+            "path": "/home/tester/Documents/webroot/happy/api",
+            "methods": [
+                "GET", "PUT", "POST", "DELETE"
+            ]
+        },
+        "/*": {
+            "path": "/home/tester/Documents/webroot/happy/web",
             "methods": [
                 "GET"
             ]
         }
     },
     "ssl": {
-        "key": "./ssl-localhost/localhost.key",
-        "cert": "./ssl-localhost/localhost.crt"
+        "key": "/home/tester/.ssl/key.pem",
+        "cert": "/home/tester/.ssl/cert.pem"
     }
 }
