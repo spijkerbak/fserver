@@ -119,8 +119,12 @@ async function handleFile(request, reply, prep) {
 async function handleImage(request, reply, prep) {
 
     const sizes = [100, 200, 400, 800, 1200, 1600, 2000, 3000, 4000]
-    const requestedWidth = parseInt(request.query.width, 10) || parseInt(request.query.height, 10)
+    
+    const metadata = await sharp(prep.realPath).metadata()
+    const ratio = metadata.width / metadata.height
 
+    const requestedWidth = parseInt(request.query.width, 10) || (parseInt(request.query.height, 10) * ratio)
+    
     // If no valid width is requested, serve the original image
     if (isNaN(requestedWidth) || requestedWidth <= 0) {
         return handleFile(request, reply, prep)
@@ -128,6 +132,9 @@ async function handleImage(request, reply, prep) {
     const closestSize = sizes.find(size => size >= requestedWidth) || sizes[sizes.length - 1]
     const dir = path.dirname(prep.realPath)
     const filename = path.basename(prep.realPath)
+
+
+    
     const resizedDir = path.join(dir, '.resized')
 
     // Ensure the resized directory exists

@@ -72,7 +72,7 @@ const createServer = async (config) => {
     server.register(import('@fastify/compress'))
 
 
-    // GET routes
+    // add routes
     for (const [routePrefix, def] of Object.entries(config.roots || {})) {
         const { path, methods } = def
         for (const method of methods) {
